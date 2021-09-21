@@ -14,9 +14,10 @@ pid_t gettid(void);
 char err_buf[BUFLEN];
 
 void verify(int rc, const char* action){
+    strerror_r(rc, err_buf, BUFLEN);
     if(rc < 0){
         fprintf(stderr, "Error %s: %s\n",
-         action, strerror_r(rc, err_buf, BUFLEN));
+         action, err_buf);
         pthread_exit(NULL);
     }
 }
@@ -27,9 +28,10 @@ void * thread_body(void * param) {
         verify(write(1, *param_a, strlen(*param_a)), "write");
         param_a++;
     }
+    return NULL;
 }
 
-int main(int argc, char *argv[]) {
+int main() {
     pthread_t t[4];
 
     const char* param1[] = {"str11\n","str12\n","str13\n","str14\n", NULL};
@@ -41,9 +43,9 @@ int main(int argc, char *argv[]) {
             "creating thread1");
     verify(pthread_create(t + 1, NULL, thread_body, param2),
             "creating thread2");
-    verify(pthread_create(t + 2, NULL, thread_body, param2),
+    verify(pthread_create(t + 2, NULL, thread_body, param3),
             "creating thread3");
-    verify(pthread_create(t + 3, NULL, thread_body, param3),
+    verify(pthread_create(t + 3, NULL, thread_body, param4),
             "creating thread4");
 
     void * retval;

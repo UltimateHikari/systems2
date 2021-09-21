@@ -16,19 +16,20 @@
 char err_buf[BUFLEN];
 
 void verify(int rc, const char* action){
+    strerror_r(rc, err_buf, BUFLEN);
     if(rc < 0){
         fprintf(stderr, "Error %s: %s\n",
-         action, strerror_r(rc, err_buf, BUFLEN));
+         action, err_buf);
         pthread_exit(NULL);
     }
 }
 
-void cleanup_handler(void* unused){
+void cleanup_handler(void * unused){
     char* note = "Child: i was cancelled\n";
     verify(write(1, note, strlen(note)), "note");
 }
 
-void * thread_body(void * param) {
+void * thread_body(void * unused) {
     time_t start, curr;
     int cnt = 0;
     /**
@@ -40,7 +41,7 @@ void * thread_body(void * param) {
     char msg_buf[BUFLEN];
     pthread_t pid = pthread_self();
 
-    verify(sprintf(msg_buf, "[%d]: %s _\n", pid, TEXT), "sprintf");
+    verify(sprintf(msg_buf, "[%ld]: %s _\n", pid, TEXT), "sprintf");
 
     curr = start = time(NULL);
 
@@ -64,8 +65,6 @@ void * thread_body(void * param) {
 
 int main(int argc, char *argv[]) {
     pthread_t thread;
-    int rc;
-    char err_buf[BUFLEN];
 
     // if(argc < 2){
     //     printf("specify lab number [4/5]\n");

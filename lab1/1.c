@@ -11,10 +11,10 @@
 
 pid_t gettid(void);
 
-void * thread_body(void * param) {
+void * thread_body(void * unused) {
     char msg_buf[BUFLEN];
     pthread_t pid = pthread_self();
-    if(sprintf(msg_buf, "[%d]: %s _\n", pid, TEXT) < 0){
+    if(sprintf(msg_buf, "[%ld]: %s _\n", pid, TEXT) < 0){
         perror("Sprintf");
         pthread_exit(NULL);
     }
@@ -26,6 +26,7 @@ void * thread_body(void * param) {
             pthread_exit(NULL);
         }
     }
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -38,10 +39,11 @@ int main(int argc, char *argv[]) {
         pthread_exit(NULL); 
     }
     
-    printf("parent thread id: %d\n", pthread_self());
+    printf("parent thread id: %ld\n", pthread_self());
 
     if ((rc = pthread_create(&thread, NULL, thread_body, NULL)) < 0) {
-        fprintf(stderr, "Error creating thread: %s\n", strerror_r(rc, err_buf, BUFLEN));
+        strerror_r(rc, err_buf, BUFLEN);
+        fprintf(stderr, "Error creating thread: %s\n", err_buf);
         pthread_exit(NULL);
     }
 
@@ -51,7 +53,8 @@ int main(int argc, char *argv[]) {
 
     void * retval;
     if ((rc = pthread_join(thread, &retval)) < 0) {
-        fprintf(stderr, "Error joining thread: %s\n", strerror_r(rc, err_buf, BUFLEN));
+        strerror_r(rc, err_buf, BUFLEN);
+        fprintf(stderr, "Error joining thread: %s\n", err_buf);
         pthread_exit(NULL);
     }
     
