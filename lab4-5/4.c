@@ -51,6 +51,7 @@ void * thread_body(void * unused) {
             printf("cnt = %d\n", cnt);  /* A cancellation point */
             cnt++;
         }
+        sleep(1);
     }
 
     int len = strlen(msg_buf);
