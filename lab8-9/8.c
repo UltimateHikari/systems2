@@ -14,9 +14,13 @@ int sig_flag = 0;
 
 char err_buf[BUFLEN];
 
+pthread_barrier_t barrier;
+pthread_mutex_t iter_mutex = PTHREAD_MUTEX_INITIALIZER;
+int farthest_iter = 0;
+
 void verify_r(int rc, const char* action){
     strerror_r(rc, err_buf, BUFLEN);
-    if(rc < 0){
+    if(rc != 0){
         fprintf(stderr, "Error %s: %s\n",
          action, err_buf);
         pthread_exit(NULL);
@@ -31,7 +35,7 @@ void verify(int rc, const char* action){
 }
 
 void quit_handler(int sig){
-    //no mutex, 1 writer 
+    //1 writer OR bunch of readers
     sig_flag = sig;
 }
 
@@ -43,6 +47,7 @@ typedef struct {
 void * pibody(void * td){
     int n = ((thread_data*)td)->n;
     int i = ((thread_data*)td)->ofs;
+    int iter = 0;
 
     sigset_t set;
     sigemptyset(&set);
@@ -52,12 +57,25 @@ void * pibody(void * td){
 
     double *res = (double*)malloc(sizeof(double));
     double pi = 0.0;
-    while(!sig_flag){
+    do{
         for (int j = 0; j < num_steps ; j++, i+=n){
             pi += 1.0/(i*4.0 + 1.0);
             pi -= 1.0/(i*4.0 + 3.0);
         }
-    }    
+        pthread_barrier_wait(&barrier);
+
+        pthread_mutex_lock(&iter_mutex);
+        if(sig_flag && iter == farthest_iter){
+            pthread_mutex_unlock(&iter_mutex);
+            break;
+        }else{
+            iter++;
+            if(iter > farthest_iter){
+                farthest_iter = iter;
+            }
+        }
+        pthread_mutex_unlock(&iter_mutex);
+    }while(1);    
     *res = pi;
     printf("%f\n", pi); //order doesnt matter
     pthread_exit(res);
@@ -82,7 +100,7 @@ main(int argc, char** argv) {
     
     pthread_t thread[MAXTHREADS];
     thread_data data[MAXTHREADS];
-
+    verify_r(pthread_barrier_init(&barrier, NULL, atoi(argv[1])), "barrier init");
     for(int i = 0; i < atoi(argv[1]); i++){
         data[i].n = atoi(argv[1]);
         data[i].ofs = i;
@@ -100,6 +118,8 @@ main(int argc, char** argv) {
         pi += *piproxy;
         free(piproxy);
     }
+
+    pthread_barrier_destroy(&barrier);
 
     printf("pi done - %.15g \n", pi*4);    
     
