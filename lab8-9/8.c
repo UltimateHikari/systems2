@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #define BUFLEN 128
-#define MAXTHREADS 100
+#define MAXTHREADS 1000
 
 #define num_steps 2000000
 
@@ -14,7 +14,6 @@ int sig_flag = 0;
 
 char err_buf[BUFLEN];
 
-pthread_barrier_t barrier;
 pthread_mutex_t iter_mutex = PTHREAD_MUTEX_INITIALIZER;
 int farthest_iter = 0;
 
@@ -55,14 +54,12 @@ void * pibody(void * td){
     sigaddset(&set, SIGUSR1);
     verify_r(pthread_sigmask(SIGINT, &set, NULL), "block signal");
 
-    double *res = (double*)malloc(sizeof(double));
     double pi = 0.0;
     do{
         for (int j = 0; j < num_steps ; j++, i+=n){
             pi += 1.0/(i*4.0 + 1.0);
             pi -= 1.0/(i*4.0 + 3.0);
         }
-        pthread_barrier_wait(&barrier);
 
         pthread_mutex_lock(&iter_mutex);
         if(sig_flag && iter == farthest_iter){
@@ -76,6 +73,8 @@ void * pibody(void * td){
         }
         pthread_mutex_unlock(&iter_mutex);
     }while(1);    
+
+    double *res = (double*)malloc(sizeof(double));
     *res = pi;
     printf("%f\n", pi); //order doesnt matter
     pthread_exit(res);
@@ -88,7 +87,7 @@ main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    if(atoi(argv[1]) > 100){
+    if(atoi(argv[1]) > MAXTHREADS){
         printf("R u out of ur mind? Ask for less threads\n");
         exit(EXIT_FAILURE);
     }
@@ -100,7 +99,6 @@ main(int argc, char** argv) {
     
     pthread_t thread[MAXTHREADS];
     thread_data data[MAXTHREADS];
-    verify_r(pthread_barrier_init(&barrier, NULL, atoi(argv[1])), "barrier init");
     for(int i = 0; i < atoi(argv[1]); i++){
         data[i].n = atoi(argv[1]);
         data[i].ofs = i;
@@ -119,7 +117,7 @@ main(int argc, char** argv) {
         free(piproxy);
     }
 
-    pthread_barrier_destroy(&barrier);
+    pthread_mutex_destroy(&iter_mutex);
 
     printf("pi done - %.15g \n", pi*4);    
     
