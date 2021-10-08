@@ -15,6 +15,8 @@
 pthread_mutex_t mutex[MUTEXES];
 int isStarted = 0;
 
+pthread_t parent_thread_id;
+
 char err_buf[BUFLEN];
 void verify(int rc, const char* action){
     strerror_r(rc, err_buf, BUFLEN);
@@ -31,31 +33,33 @@ void verify_e(int rc, const char* action){
     }
 }
 
-void * thread_body(void * id) {
+void * thread_body(void * unused) {
     char msg_buf[BUFLEN];
     pthread_t pid = pthread_self();
     verify_e(sprintf(msg_buf, "[%ld]: %s _\n", pid, TEXT), "sprintf");
     int len = strlen(msg_buf);
-
-    int cur_mutex = 0;
-    verify(pthread_mutex_lock(mutex + 1), "mut start lock");
-    if(isStarted){
-        verify(pthread_mutex_unlock(mutex + 2), "mut start unlock");
+    int cur_mutex = 0, next_mutex;
+ 
+    if(parent_thread_id != pid){
+        cur_mutex = 2;
+        verify(pthread_mutex_lock(mutex + cur_mutex), "child start lock");
+        sched_yield();
+    } else { 
+        verify(pthread_mutex_lock(mutex + cur_mutex), "parent start lock");
+        sched_yield();
     }
-    for(int i = 0, j = 0; i < COUNT*MUTEXES; i++){
-        verify(pthread_mutex_lock(mutex + cur_mutex), "mut lock");
-        cur_mutex = (cur_mutex + 1) % MUTEXES;
+
+    for(int i = 0; i < COUNT; i++){
+        next_mutex = (cur_mutex + 1) % MUTEXES;
+        verify(pthread_mutex_lock(mutex + next_mutex), "mut lock");
+
+        msg_buf[len - 2] = '0' + i;
+        verify_e(write(1, msg_buf, len), "write");
+
         verify(pthread_mutex_unlock(mutex + cur_mutex), "mut unlock");
-
-        if(cur_mutex == 1){
-            msg_buf[len - 2] = '0' + j;
-            j++;
-            verify_e(write(1, msg_buf, len), "write");
-            isStarted = 1;
-        }
-        cur_mutex = (cur_mutex + 1) % MUTEXES;
+        cur_mutex = next_mutex;
     }
-    verify(pthread_mutex_unlock(mutex + 1), "mut end unlock");
+    verify(pthread_mutex_unlock(mutex + cur_mutex), "mut unlock");
     return NULL;
 }
 
@@ -69,11 +73,12 @@ int main() {
     for(int i = 0; i < MUTEXES; i++){
         verify(pthread_mutex_init(mutex + i, &mattr), "setattr");
     }
-    
-    printf("parent thread id: %ld\n", pthread_self());
-    // verify(pthread_mutex_lock(mutex + 0), "parent lock");
+
+    parent_thread_id = pthread_self();   
+    printf("parent thread id: %ld\n", parent_thread_id);
 
     verify(pthread_create(&thread, NULL, thread_body, NULL), "pcreate");
+    sched_yield();
     thread_body(NULL);
 
     void * retval;
@@ -86,91 +91,3 @@ int main() {
     }
     pthread_exit(NULL);
 }
-// #include <stdio.h>
-// #include <unistd.h>
-// #include <pthread.h>
-// #include <stdlib.h>
-// #include <string.h>
-
-// #define MUTEXES_NUMBER 3
-// #define ITERATIONS 10
-// #define STATUS_SUCCESS 0
-// #define STDOUT 0
-// #define YES 1
-// #define NO 0
-// #define BUFFER_DEF_LENGTH 256
-
-// char errorBuffer[BUFFER_DEF_LENGTH];
-// pthread_mutex_t mutexes[MUTEXES_NUMBER];
-
-// int hasItPrintedString = NO;
-
-// void freeResources(int mutexesCount) {
-//     for (int i = 0; i < mutexesCount; ++i) {
-//         if (pthread_mutex_destroy(&mutexes[i]) != STATUS_SUCCESS) {
-//             fprintf(stderr, "pthread_mutex_destroy problems");
-//             pthread_exit(NULL);
-//         }
-//     }
-// }
-
-// void verifyPthreadFunctions(int returnCode, const char *functionName) {
-//     strerror_r(returnCode, errorBuffer, BUFFER_DEF_LENGTH);
-//     if (returnCode < STATUS_SUCCESS) {
-//         fprintf(stderr, "Error %s: %s\n", functionName, errorBuffer);
-//         freeResources(MUTEXES_NUMBER);
-//         pthread_exit(NULL);
-//     }
-// }
-
-// void *writeStrings(void *str) {
-//     int currMutexIdx = 1;
-
-//     verifyPthreadFunctions(pthread_mutex_lock(&mutexes[2]), "pthread_mutex_lock");
-//     if (hasItPrintedString)
-//         verifyPthreadFunctions(pthread_mutex_unlock(&mutexes[0]), "pthread_mutex_unlock");
-//     for (int i = 0; i < ITERATIONS * MUTEXES_NUMBER; i++) {
-//         verifyPthreadFunctions(pthread_mutex_lock(&mutexes[currMutexIdx]), "pthread_mutex_lock");
-//         currMutexIdx = (currMutexIdx + 1) % MUTEXES_NUMBER;
-//         verifyPthreadFunctions(pthread_mutex_unlock(&mutexes[currMutexIdx]), "pthread_mutex_unlock");
-//         if (currMutexIdx == 2) {
-//             fprintf(stdout, "%s\n",(const char *) str);
-//             fflush(stdout);
-//             hasItPrintedString = YES;
-//         }
-//         currMutexIdx = (currMutexIdx + 1) % MUTEXES_NUMBER;
-//     }
-//     verifyPthreadFunctions(pthread_mutex_unlock(&mutexes[2]), "pthread_mutex_unlock");
-
-//     return NULL;
-// }
-
-// void initMutexes() {
-//     pthread_mutexattr_t mattr;
-//     pthread_mutexattr_init(&mattr);
-//     verifyPthreadFunctions(pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_ERRORCHECK), "pthread_mutexattr_settype");
-//     for (int i = 0; i < MUTEXES_NUMBER; ++i) {
-//         if (pthread_mutex_init(&mutexes[i], &mattr) != STATUS_SUCCESS) {
-//             fprintf(stderr, "pthread_mutex_init problems, thread didn't created");
-//             freeResources(i + 1);
-//         }
-//     }
-// }
-
-// int main() {
-//     pthread_t childrenThread;
-
-//     initMutexes();
-
-//     verifyPthreadFunctions(pthread_create(&childrenThread, NULL, writeStrings, (void *) "Children message"), "pthread_create");
-
-// //    while (!printed) { sched_yield(); }
-
-//     writeStrings((void *) "Parent message");
-
-//     verifyPthreadFunctions(pthread_join(childrenThread, NULL), "pthread_join");
-
-//     pthread_exit(EXIT_SUCCESS);
-// }
-
-// /* Fundament by Dmitrii V Irtegov */
