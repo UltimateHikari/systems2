@@ -35,19 +35,15 @@ void verify_e(int rc, const char* action){
 
 void * thread_body(void * unused) {
     char msg_buf[BUFLEN];
-    pthread_t pid = pthread_self();
-    verify_e(sprintf(msg_buf, "[%ld]: %s _\n", pid, TEXT), "sprintf");
-    int len = strlen(msg_buf);
     int cur_mutex = 0, next_mutex;
- 
+    pthread_t pid = pthread_self();
     if(parent_thread_id != pid){
         cur_mutex = 2;
         verify(pthread_mutex_lock(mutex + cur_mutex), "child start lock");
-        sched_yield();
-    } else { 
-        verify(pthread_mutex_lock(mutex + cur_mutex), "parent start lock");
-        sched_yield();
     }
+
+    verify_e(sprintf(msg_buf, "[%ld]: %s _\n", pid, TEXT), "sprintf");
+    int len = strlen(msg_buf);
 
     for(int i = 0; i < COUNT; i++){
         next_mutex = (cur_mutex + 1) % MUTEXES;
@@ -77,8 +73,14 @@ int main() {
     parent_thread_id = pthread_self();   
     printf("parent thread id: %ld\n", parent_thread_id);
 
+    verify(pthread_mutex_lock(mutex), "parent start lock");
     verify(pthread_create(&thread, NULL, thread_body, NULL), "pcreate");
-    sched_yield();
+    
+    while(pthread_mutex_trylock(mutex + 2) == 0){
+        pthread_mutex_unlock(mutex + 2);
+        sched_yield();
+    }
+    
     thread_body(NULL);
 
     void * retval;
