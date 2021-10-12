@@ -55,6 +55,7 @@ philosopher (void *num)
 {
   int id;
   int left_fork, right_fork, f;
+  int eaten = 0;
 
   id = (int)num;
   printf ("Philosopher %d sitting down to dinner.\n", id);
@@ -77,6 +78,7 @@ philosopher (void *num)
     pthread_mutex_unlock(&forklock);
     sem_wait(s + id); // if test failed;
     //eat
+    eaten++;
     printf ("Philosopher %d: eating.\n", id);
     usleep (DELAY * (FOOD - f + 1));
 
@@ -90,7 +92,7 @@ philosopher (void *num)
 
     pthread_mutex_unlock(&forklock);
   }
-  printf ("Philosopher %d is done eating.\n", id);
+  printf ("Philosopher %d is done eating %d meals.\n", id, eaten);
   return (NULL);
 }
 
