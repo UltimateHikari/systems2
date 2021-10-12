@@ -6,11 +6,16 @@
 #include <unistd.h>
 #include <string.h>
 #define BUFLEN 128
-#define MAXTHREADS 1000
+#define MAXTHREADS 10000
+
+#define NORMAL  1
+#define SILENT  0
+#define VERBOSE 2
 
 #define num_steps 2000000
 
 int sig_flag = 0;
+int isVerbose = NORMAL;
 
 char err_buf[BUFLEN];
 
@@ -30,6 +35,15 @@ void verify(int rc, const char* action){
     if(rc < 0){
         perror(action);
         pthread_exit(NULL);
+    }
+}
+
+void setVerbosityLevel(const char* c){
+    if(c[0] == 'v'){
+        isVerbose = VERBOSE;
+    }
+    if(c[0] == 's'){
+        isVerbose = SILENT;
     }
 }
 
@@ -76,15 +90,22 @@ void * pibody(void * td){
 
     double *res = (double*)malloc(sizeof(double));
     *res = pi;
-    printf("%f\n", pi); //order doesnt matter
+    if(isVerbose == VERBOSE){
+        printf("%f\n", pi); //order doesnt matter
+    }
     pthread_exit(res);
 }
 
 int
 main(int argc, char** argv) {
     if(argc < 2){
-        printf("Usage: lab8 THREAD-COUNT\n");
+        printf("Usage: lab8 THREAD-COUNT [v|s]\n \
+      Put v for verbosity and s for silence\n");
         exit(EXIT_FAILURE);
+    }
+
+    if(argc > 2){
+        setVerbosityLevel(argv[2]);
     }
 
     if(atoi(argv[1]) > MAXTHREADS){
@@ -119,7 +140,9 @@ main(int argc, char** argv) {
 
     pthread_mutex_destroy(&iter_mutex);
 
-    printf("pi done - %.15g \n", pi*4);    
+    if(isVerbose != SILENT){
+        printf("pi done - %.15g \n", pi*4);
+    } 
     
     pthread_exit(NULL);
 }
