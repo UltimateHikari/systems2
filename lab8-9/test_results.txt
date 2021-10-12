@@ -1,0 +1,44 @@
+Killing 10 threads for 2 seconds
+smallest iteration on signal read was 290 of 549;
+max lag was 0.471767, average lag was 0.333097
+Killing 100 threads for 2 seconds
+smallest iteration on signal read was 38 of 70;
+max lag was 0.457143, average lag was 0.698081
+Killing 500 threads for 2 seconds
+smallest iteration on signal read was 7 of 12;
+max lag was 0.416667, average lag was 0.538804
+Killing 1000 threads for 2 seconds
+smallest iteration on signal read was 1 of 9;
+max lag was 0.888889, average lag was 1.964786
+Killing 10 threads for 5 seconds
+smallest iteration on signal read was 994 of 1206;
+max lag was 0.175788, average lag was 0.136591
+Killing 100 threads for 5 seconds
+smallest iteration on signal read was 99 of 117;
+max lag was 0.153846, average lag was 0.106433
+Killing 500 threads for 5 seconds
+smallest iteration on signal read was 18 of 25;
+max lag was 0.280000, average lag was 0.203636
+Killing 1000 threads for 5 seconds
+smallest iteration on signal read was 6 of 14;
+max lag was 0.571429, average lag was 0.442822
+Killing 10 threads for 10 seconds
+smallest iteration on signal read was 1951 of 2312;
+max lag was 0.156142, average lag was 0.092270
+Killing 100 threads for 10 seconds
+smallest iteration on signal read was 189 of 226;
+max lag was 0.163717, average lag was 0.067280
+Killing 500 threads for 10 seconds
+smallest iteration on signal read was 38 of 49;
+max lag was 0.224490, average lag was 0.169766
+Killing 1000 threads for 10 seconds
+Killing 10 threads for 20 seconds
+smallest iteration on signal read was 4043 of 4326;
+max lag was 0.065418, average lag was 0.020672
+Killing 100 threads for 20 seconds
+smallest iteration on signal read was 406 of 458;
+max lag was 0.113537, average lag was 0.078848
+Killing 500 threads for 20 seconds
+Killing 1000 threads for 20 seconds
+smallest iteration on signal read was 77 of 109;
+max lag was 0.293578, average lag was 0.290147

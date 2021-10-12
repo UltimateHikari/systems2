@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <string.h>
+
 #define BUFLEN 128
 #define MAXTHREADS 10000
 
@@ -12,10 +13,11 @@
 #define SILENT  0
 #define VERBOSE 2
 
-#define num_steps 2000000
+#define num_steps 200000
 
 int sig_flag = 0;
 int isVerbose = NORMAL;
+int thread_sig_iteration[MAXTHREADS];
 
 char err_buf[BUFLEN];
 
@@ -61,6 +63,7 @@ void * pibody(void * td){
     int n = ((thread_data*)td)->n;
     int i = ((thread_data*)td)->ofs;
     int iter = 0;
+    int isDumped = 0, threadID = i;
 
     sigset_t set;
     sigemptyset(&set);
@@ -76,6 +79,11 @@ void * pibody(void * td){
         }
 
         pthread_mutex_lock(&iter_mutex);
+        if(!isDumped && sig_flag){
+            isDumped = 1;
+            thread_sig_iteration[threadID] = iter;
+        }
+
         if(sig_flag && iter == farthest_iter){
             pthread_mutex_unlock(&iter_mutex);
             break;
@@ -94,6 +102,18 @@ void * pibody(void * td){
         printf("%f\n", pi); //order doesnt matter
     }
     pthread_exit(res);
+}
+
+void print_thread_stats(int nThreads){
+    int min_iter = farthest_iter;
+    double sum_lag = 0;
+    for(int i = 0; i < nThreads; i++){
+        min_iter = (min_iter > thread_sig_iteration[i] ? thread_sig_iteration[i] : min_iter);
+        sum_lag += (double)(farthest_iter-thread_sig_iteration[i])/thread_sig_iteration[i];
+    }
+    printf("smallest iteration on signal read was %d of %d;\n", min_iter, farthest_iter);
+    printf("max lag was %f, average lag was %f\n",
+     (double)(farthest_iter - min_iter)/farthest_iter, sum_lag/nThreads);
 }
 
 int
@@ -120,8 +140,9 @@ main(int argc, char** argv) {
     
     pthread_t thread[MAXTHREADS];
     thread_data data[MAXTHREADS];
-    for(int i = 0; i < atoi(argv[1]); i++){
-        data[i].n = atoi(argv[1]);
+    int nThreads = atoi(argv[1]);
+    for(int i = 0; i < nThreads; i++){
+        data[i].n = nThreads;
         data[i].ofs = i;
         //lowest chance to break for newly created thr on create exit
         verify(pthread_create(thread + i, NULL, pibody, (void *)(data + i)), "creating thread");
@@ -137,6 +158,8 @@ main(int argc, char** argv) {
         pi += *piproxy;
         free(piproxy);
     }
+
+    print_thread_stats(nThreads);
 
     pthread_mutex_destroy(&iter_mutex);
 
