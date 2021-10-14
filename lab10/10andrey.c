@@ -6,6 +6,8 @@
 #define PHILO 5
 #define DELAY 30000
 #define FOOD 50
+#define VERBOSE 1
+#define SILENT  0
 
 pthread_mutex_t forks[PHILO];
 pthread_t phils[PHILO];
@@ -17,8 +19,8 @@ void down_forks (int, int);
 pthread_mutex_t foodlock;
 
 int sleep_seconds = 0;
+int verbosity = SILENT;
 
-int
 main (int argn,
       char **argv)
 {
@@ -39,9 +41,9 @@ main (int argn,
 
 void *
 philosopher (void *num)
-{
+{   
     int id;
-    int left_fork, right_fork, f;
+    int left_fork, right_fork, f, eaten = 0;
 
     id = *((int*)num);
     printf ("Philosopher %d sitting down to dinner.\n", id);
@@ -65,11 +67,12 @@ philosopher (void *num)
         printf ("Philosopher %d: get dish %d.\n", id, f);
         get_forks(id, right_fork, left_fork);
 
-        printf ("Philosopher %d: eating.\n", id);
+        if(verbosity) printf ("Philosopher %d: eating.\n", id);
+        eaten++;
         usleep (DELAY * (FOOD - f + 1));
         down_forks (left_fork, right_fork);
     }
-    printf ("Philosopher %d is done eating.\n", id);
+    printf ("Philosopher %d is done eating %d meals.\n", id, eaten);
     return (NULL);
 }
 
@@ -94,7 +97,7 @@ get_fork (int phil,
           char *hand)
 {
     pthread_mutex_lock (&forks[fork]);
-    printf ("Philosopher %d: got %s fork %d\n", phil, hand, fork);
+    if(verbosity) printf ("Philosopher %d: got %s fork %d\n", phil, hand, fork);
 }
 
 void get_forks(int id, int right_fork, int left_fork)
