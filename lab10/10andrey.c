@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sched.h>
 
 #define PHILO 5
 #define DELAY 30000
 #define FOOD 50
 #define VERBOSE 1
 #define SILENT  0
+#define SP_POSIX 1
+#define SP_THREAD 0
 
 pthread_mutex_t forks[PHILO];
 pthread_t phils[PHILO];
@@ -20,14 +23,17 @@ pthread_mutex_t foodlock;
 
 int sleep_seconds = 0;
 int verbosity = SILENT;
+int policy = SP_POSIX;
 
-main (int argn,
+int main (int argn,
       char **argv)
 {
     int i;
 
     if (argn == 2)
-        sleep_seconds = atoi (argv[1]);
+        //sleep_seconds = atoi (argv[1]);
+        policy = atoi(argv[1]);
+    
 
     pthread_mutex_init (&foodlock, NULL);
     for (i = 0; i < PHILO; i++)
@@ -39,9 +45,23 @@ main (int argn,
     return 0;
 }
 
+void posix_set_sched_policy(){
+    int max_priority = sched_get_priority_max(SCHED_RR);
+    printf("max param allowed %d\n", max_priority);
+    struct sched_param param = {.sched_priority = max_priority};
+    printf("had %d policy, setting %d..\n", sched_getscheduler(0), SCHED_RR);
+    sched_setscheduler(0, SCHED_RR, &param);
+    printf("set %d policy;\n", sched_getscheduler(0));
+}
+
 void *
 philosopher (void *num)
 {   
+    if(policy){
+        posix_set_sched_policy();
+    }else{
+        // actually pthread_setschedparam does same stuff
+    }
     int id;
     int left_fork, right_fork, f, eaten = 0;
 
@@ -69,6 +89,7 @@ philosopher (void *num)
 
         if(verbosity) printf ("Philosopher %d: eating.\n", id);
         eaten++;
+        sched_yield();
         usleep (DELAY * (FOOD - f + 1));
         down_forks (left_fork, right_fork);
     }
