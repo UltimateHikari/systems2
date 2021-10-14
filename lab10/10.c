@@ -19,6 +19,8 @@ pthread_t phils[PHILO];
 void *philosopher (void *id);
 int food_on_table ();
 void get_fork (int, int, char *);
+void get_forks(int i);
+void test(int i);
 void down_forks (int, int);
 pthread_mutex_t foodlock;
 
@@ -27,8 +29,7 @@ pthread_mutex_t foodlock;
 /**/int state[PHILO];/**/
 
 int
-main (int argn,
-      char **argv)
+main ()
 {
   int i;
 
@@ -66,7 +67,7 @@ philosopher (void *num)
   if (left_fork == PHILO)
     left_fork = 0;
  
-  while (f = food_on_table ()) {
+  while ((f = food_on_table ())) {
     //no think
     // try take
     pthread_mutex_lock(&forklock);
