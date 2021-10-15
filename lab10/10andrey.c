@@ -24,6 +24,7 @@ pthread_mutex_t foodlock;
 int sleep_seconds = 0;
 int verbosity = SILENT;
 int policy = SP_POSIX;
+int max_priority;
 
 int main (int argn,
       char **argv)
@@ -46,12 +47,17 @@ int main (int argn,
 }
 
 void posix_set_sched_policy(){
-    int max_priority = sched_get_priority_max(SCHED_RR);
+    max_priority = sched_get_priority_max(SCHED_RR);
     printf("max param allowed %d\n", max_priority);
     struct sched_param param = {.sched_priority = max_priority};
     printf("had %d policy, setting %d..\n", sched_getscheduler(0), SCHED_RR);
     sched_setscheduler(0, SCHED_RR, &param);
     printf("set %d policy;\n", sched_getscheduler(0));
+}
+
+void lower_priority(int eaten){
+    struct sched_param param = {.sched_priority = max_priority - eaten};
+    sched_setscheduler(0, SCHED_RR, &param);
 }
 
 void *
@@ -89,7 +95,7 @@ philosopher (void *num)
 
         if(verbosity) printf ("Philosopher %d: eating.\n", id);
         eaten++;
-        sched_yield();
+        lower_priority(eaten);
         usleep (DELAY * (FOOD - f + 1));
         down_forks (left_fork, right_fork);
     }
