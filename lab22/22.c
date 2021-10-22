@@ -129,7 +129,7 @@ philosopher (void *num)
         verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
           drop_forks (id, left_fork, right_fork);
           //do not care if signal or broadcast
-          verify(pthread_cond_signal(&monitor), "SIG_FATWAKEUP", destroy_all);
+          verify(pthread_cond_broadcast(&monitor), "SIG_FATWAKEUP", destroy_all);
         verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
 
       }
