@@ -7,7 +7,7 @@
 
 int verify(int rc, const char* action, void(*free_resources)()){
     char err_buf[BUFLEN];
-    printf("verifying %s\n", action); //debug for monitor
+    //printf("verifying %s\n", action); //debug for monitor
     strerror_r(rc, err_buf, BUFLEN);
     if(rc != 0){
         fprintf(stderr, "Error %s: %s\n",

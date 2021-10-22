@@ -19,10 +19,12 @@ pthread_t phils[PHILO];
 pthread_mutex_t foodlock;
 pthread_mutex_t monlock;
 pthread_cond_t monitor;
+int food = FOOD;
 
 void *philosopher (void *id);
 int food_on_table ();
 int try_get_fork (int, int, char *);
+void drop_food ();
 void drop_fork (int, int, char *);
 void drop_forks (int, int, int);
 
@@ -87,42 +89,53 @@ philosopher (void *num)
  
   while ((f = food_on_table ())) {
     //no think
-    // try take
-    while(1){
-      // if spurious wakeup / broadcast wakeup, we're rushing for mutex+mon+left fork again
-      // bc our condition is outcome of trylock, not global var
-      verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
-      printf ("Philosopher %d: try get dish %d.\n", id, f);
-      
-      if(!try_get_fork(id, left_fork, "left")){
+    /**
+     * try take
+     * if spurious wakeup / broadcast wakeup, we're rushing for mutex+mon+left fork again
+     * bc our condition is outcome of trylock, not global var
+     */ 
+    verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
+    printf ("Philosopher %d: try get dish %d.\n", id, f);
+    
+    if(!try_get_fork(id, left_fork, "left")){
+
+      drop_food();
+      verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
+      verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+
+    } else {
+
+      printf ("Philosopher %d: got     left fork %d\n", id, left_fork);
+
+      if (!try_get_fork(id, right_fork, "right")){
+        drop_food();
+        drop_fork(id, left_fork, "left");
+
         verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
-        printf("%d woke up on left\n", id);
+        verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+
       } else {
-        printf ("Philosopher %d: got     left fork %d\n", id, left_fork);
-        if (!try_get_fork(id, right_fork, "right")){
-          drop_fork(id, left_fork, "left");
-          verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
-          printf("%d woke up on right\n", id);
-        } else {
-          printf ("Philosopher %d: got     right fork %d\n\n", id, right_fork);
-          // have both forks now, can eat
-          verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
-          break;
-        }
+
+        printf ("Philosopher %d: got     right fork %d\n\n", id, right_fork);
+        // have both forks now, can eat
+        verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+        
+        //eat
+        eaten++;
+        printf ("Philosopher %d: eating  %d.\n", id, f);
+        usleep (DELAY * (FOOD - f + 1));
+
+        // need that mutex for SIG_FATWAKEUP
+        verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
+          drop_forks (id, left_fork, right_fork);
+          //do not care if signal or broadcast
+          verify(pthread_cond_signal(&monitor), "SIG_FATWAKEUP", destroy_all);
+        verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+
       }
 
     }
-    //eat
-    eaten++;
-    printf ("Philosopher %d: eating  %d.\n", id, f);
-    usleep (DELAY * (FOOD - f + 1));
-
-    // need that mutex for SIG_FATWAKEUP
-    verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
-      drop_forks (id, left_fork, right_fork);
-      //do not care if signal or broadcast
-      verify(pthread_cond_signal(&monitor), "SIG_FATWAKEUP", destroy_all);
-    verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+    
   }
   printf ("Philosopher %d is done eating %d meals.\n", id, eaten);
   return (NULL);
@@ -131,7 +144,6 @@ philosopher (void *num)
 int
 food_on_table ()
 {
-  static int food = FOOD;
   int myfood;
 
   pthread_mutex_lock (&foodlock);
@@ -141,6 +153,12 @@ food_on_table ()
   myfood = food;
   pthread_mutex_unlock (&foodlock);
   return myfood;
+}
+
+void drop_food (){
+  pthread_mutex_lock (&foodlock);
+  food++;
+  pthread_mutex_unlock (&foodlock);
 }
 
 int
