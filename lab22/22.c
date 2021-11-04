@@ -77,6 +77,7 @@ philosopher (void *num)
   int id;
   int left_fork, right_fork, f;
   int eaten = 0;
+  int awaken = 0;
 
   id = (int)num;
   printf ("Philosopher %d sitting down to dinner.\n", id);
@@ -94,15 +95,19 @@ philosopher (void *num)
      * if spurious wakeup / broadcast wakeup, we're rushing for mutex+mon+left fork again
      * bc our condition is outcome of trylock, not global var
      */ 
-    verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
+    if(!awaken){
+      verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
+    }
     printf ("Philosopher %d: try get dish %d.\n", id, f);
+    awaken = 0;
     
     if(!try_get_fork(id, left_fork, "left")){
 
       drop_food();
       verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
-      verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
-
+      
+      printf ("Philosopher %d: awaken on 1\n", id);
+      awaken = 1;
     } else {
 
       printf ("Philosopher %d: got     left fork %d\n", id, left_fork);
@@ -112,7 +117,8 @@ philosopher (void *num)
         drop_fork(id, left_fork, "left");
 
         verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
-        verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+        printf ("Philosopher %d: awaken on 2\n", id);
+        awaken = 1;
 
       } else {
 
@@ -138,6 +144,10 @@ philosopher (void *num)
     
   }
   printf ("Philosopher %d is done eating %d meals.\n", id, eaten);
+  if(awaken){
+    // if we're done, but still holding mutex
+    verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
+  }
   return (NULL);
 }
 
