@@ -20,6 +20,7 @@ pthread_mutex_t foodlock;
 pthread_mutex_t monlock;
 pthread_cond_t monitor;
 int food = FOOD;
+int allowed_to_wake = 0;
 
 void *philosopher (void *id);
 int food_on_table ();
@@ -100,11 +101,14 @@ philosopher (void *num)
     }
     printf ("Philosopher %d: try get dish %d.\n", id, f);
     awaken = 0;
+    allowed_to_wake = 0;
     
     if(!try_get_fork(id, left_fork, "left")){
 
       drop_food();
-      verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
+      while(!allowed_to_wake){
+        verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
+      }
       
       printf ("Philosopher %d: awaken on 1\n", id);
       awaken = 1;
@@ -116,7 +120,9 @@ philosopher (void *num)
         drop_food();
         drop_fork(id, left_fork, "left");
 
-        verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
+        while(!allowed_to_wake){
+          verify(pthread_cond_wait(&monitor, &monlock), "sleeping", destroy_all);
+        }
         printf ("Philosopher %d: awaken on 2\n", id);
         awaken = 1;
 
@@ -135,6 +141,7 @@ philosopher (void *num)
         verify(pthread_mutex_lock(&monlock), "monlock", destroy_all);
           drop_forks (id, left_fork, right_fork);
           //do not care if signal or broadcast
+          allowed_to_wake = 1;
           verify(pthread_cond_broadcast(&monitor), "SIG_FATWAKEUP", destroy_all);
         verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
 
@@ -146,6 +153,8 @@ philosopher (void *num)
   printf ("Philosopher %d is done eating %d meals.\n", id, eaten);
   if(awaken){
     // if we're done, but still holding mutex
+    allowed_to_wake = 1;
+    verify(pthread_cond_signal(&monitor), "SIG_FATWAKEUP", destroy_all);
     verify(pthread_mutex_unlock(&monlock), "monunlock", destroy_all);
   }
   return (NULL);
