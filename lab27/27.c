@@ -9,7 +9,7 @@ int server_port;
 int num_threads = 0;
 pthread_t threads[MAX_THREADS];
 
-void quit_handler(int sig){
+void quit_handler(int unused){
   exit_flag = 1;
 }
 
@@ -35,13 +35,11 @@ void init_signal(){
 }
 
 void free_thread_res(int sc, int sc2){
-    if(exit_flag){
-        close(sc);
-        if(sc2 != NO_SOCK){
-            close(sc2);
-        }
-        pthread_exit(NULL);
+    close(sc);
+    if(sc2 != NO_SOCK){
+        close(sc2);
     }
+    pthread_exit(NULL);
 }
 
 int init_server(int* sc){
@@ -109,14 +107,18 @@ int spin_connection(int c_sock, int r_sock){
     struct pollfd fds[2];
     fds[0].fd = c_sock;
     fds[1].fd = r_sock;
-    fds[0].events = POLLIN;
-    fds[1].events = POLLIN;
+    fds[0].events = POLLIN | POLLHUP;
+    fds[1].events = POLLIN | POLLHUP;
 
     while(!exit_flag){
         //TODO test if sockets are open, return if not
         verify_e(poll(fds, 2, TIMEOUT),
             "poll", free_resources_signal); CHECK_FLAG;
         printf("[%d/%d]: polled c/r: %d/%d\n", c_sock, r_sock, fds[0].revents, fds[1].revents);
+        if((fds[0].revents & POLLHUP) != 0 || (fds[1].revents & POLLHUP) != 0){
+            printf("[%d/%d]: terminating session..", c_sock, r_sock);
+            free_thread_res(c_sock, r_sock);
+        }
         if(fds[0].revents != 0){
             transmit(c_sock, r_sock);
         }
@@ -147,6 +149,7 @@ void join_threads(){
 
 int main(int argc, char** argv){
     int server_sc;
+    //printf("%d,%d,%d", POLLERR, POLLHUP, POLLIN);
 
     init_args(argc, argv);
     init_signal();
