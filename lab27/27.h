@@ -24,5 +24,5 @@
 #define NO_ADDR NULL
 #define MAX_THREADS 510
 #define TIMEOUT 3000
-
+#define SUCCESS 1
 

@@ -23,7 +23,7 @@ void init_args(int argc, char** argv){
         pthread_exit(NULL);
     } else {
         server_port = atoi(argv[1]);
-        recv_ip = atoi(argv[2]);
+        recv_ip = argv[2];
         recv_port = atoi(argv[3]);
     }
 }
@@ -59,22 +59,25 @@ int init_server(int* sc){
         "ssock bind", free_resources_signal); CHECK_FLAG;
     verify_e(listen(*sc, BACKLOG), 
         "ssock listen", free_resources_signal); CHECK_FLAG;
-    return 1;
+    return SUCCESS;
 }
 
-int init_connection(int* r_sock){
-    //TODO open another socket
-    return 1;
+int init_connection(int* sc){
+    struct sockaddr_in addr;
+
+    *sc = verify_e(socket(AF_INET, SOCK_STREAM, DEFAULT_PROTOCOL),
+        "ssock open", free_resources_signal); CHECK_FLAG;
+    
+    memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(recv_port);
+	addr.sin_addr.s_addr = inet_addr(recv_ip); //TODO double-check
+    verify_e(bind(*sc, (struct sockaddr*)&addr, sizeof(addr)), 
+        "ssock bind", free_resources_signal); CHECK_FLAG;
+    return SUCCESS;
 }
 
-void connection_body(void * raw_socket){
-    int c_sock = (int) raw_socket; // client socket
-    int r_sock = NO_SOCK; // receiver socket
-    if(init_connection(&r_sock)){
-        spin_connection(c_sock, r_sock);
-    }
-    free_thread_res(c_sock, r_sock);
-}
+void * connection_body(void * raw_socket);
 
 int spin_server(int sc){
     int cl;
@@ -82,9 +85,21 @@ int spin_server(int sc){
         cl = verify_e(accept(sc, NO_ADDR, NO_ADDR),
             "ssock accept", free_resources_signal); CHECK_FLAG;
         verify(pthread_create(
-            threads + num_threads, NULL, connection_body, (void *)cl),
+            threads + num_threads, NULL, connection_body, (void *)&cl),
             "create", free_resources_signal); CHECK_FLAG;
     }
+
+    return SUCCESS;
+}
+
+int transmit(int read_socket, int write_socket){
+    char buf[BUFLEN];
+    memset(buf, 0, BUFLEN);
+    verify_e(read(read_socket, buf, BUFLEN),
+        "read", free_resources_signal); CHECK_FLAG;
+    verify_e(write(write_socket, buf, strlen(buf)),
+        "write", free_resources_signal); CHECK_FLAG;
+    return SUCCESS;
 }
 
 int spin_connection(int c_sock, int r_sock){
@@ -96,7 +111,7 @@ int spin_connection(int c_sock, int r_sock){
 
     while(!exit_flag){
         //TODO test if sockets are open, return if not
-        int res = verify_e(poll(fds, 2, TIMEOUT),
+        verify_e(poll(fds, 2, TIMEOUT),
             "poll", free_resources_signal); CHECK_FLAG;
         if(fds[0].revents != 0){
             transmit(c_sock, r_sock);
@@ -105,15 +120,22 @@ int spin_connection(int c_sock, int r_sock){
             transmit(r_sock, c_sock);
         }
     }
+
+    return SUCCESS;
 }
 
-void transmit(int read_socket, int write_socket){
-    // TODO read from one, put to another
+void * connection_body(void * raw_socket){
+    int c_sock = (int) raw_socket; // client socket
+    int r_sock = NO_SOCK; // receiver socket
+    if(init_connection(&r_sock)){
+        spin_connection(c_sock, r_sock);
+    }
+    free_thread_res(c_sock, r_sock);
 }
 
 void join_threads(){
     for(int i = 0; i < num_threads; i++){
-        verify(pthread_join(threads + i, NULL),
+        verify(pthread_join(threads[i], NULL),
             "join", free_resources_signal);
     }
 }
@@ -122,7 +144,7 @@ int main(int argc, char** argv){
     int server_sc;
 
     init_args(argc, argv);
-    init_signal;
+    init_signal();
     if(init_server(&server_sc)){
         spin_server(server_sc);
     }
