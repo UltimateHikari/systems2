@@ -117,6 +117,7 @@ int spin_connection(int c_sock, int r_sock){
         printf("[%d/%d]: polled c/r: %d/%d\n", c_sock, r_sock, fds[0].revents, fds[1].revents);
         if((fds[0].revents & POLLHUP) != 0 || (fds[1].revents & POLLHUP) != 0){
             printf("[%d/%d]: terminating session..", c_sock, r_sock);
+            fflush(stdout);
             free_thread_res(c_sock, r_sock);
         }
         if(fds[0].revents != 0){
