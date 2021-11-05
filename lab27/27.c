@@ -72,20 +72,22 @@ int init_connection(int* sc){
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(recv_port);
 	addr.sin_addr.s_addr = inet_addr(recv_ip); //TODO double-check
-    verify_e(bind(*sc, (struct sockaddr*)&addr, sizeof(addr)), 
-        "ssock bind", free_resources_signal); CHECK_FLAG;
+    verify_e(connect(*sc, (struct sockaddr*)&addr, sizeof(addr)), 
+        "ssock connect", free_resources_signal); CHECK_FLAG;
+    printf("[%d]: connected to %s:%d\n", *sc, recv_ip, recv_port);
     return SUCCESS;
 }
 
 void * connection_body(void * raw_socket);
 
 int spin_server(int sc){
-    int cl;
+    printf("Spinning server...\n");
     while(!exit_flag){
-        cl = verify_e(accept(sc, NO_ADDR, NO_ADDR),
+        int* cl = (int*)malloc(sizeof(int));
+        *cl = verify_e(accept(sc, NO_ADDR, NO_ADDR),
             "ssock accept", free_resources_signal); CHECK_FLAG;
         verify(pthread_create(
-            threads + num_threads, NULL, connection_body, (void *)&cl),
+            threads + num_threads, NULL, connection_body, (void *)cl),
             "create", free_resources_signal); CHECK_FLAG;
     }
 
@@ -97,6 +99,7 @@ int transmit(int read_socket, int write_socket){
     memset(buf, 0, BUFLEN);
     verify_e(read(read_socket, buf, BUFLEN),
         "read", free_resources_signal); CHECK_FLAG;
+    //printf("[%d]: read: %s\n", read_socket, buf);
     verify_e(write(write_socket, buf, strlen(buf)),
         "write", free_resources_signal); CHECK_FLAG;
     return SUCCESS;
@@ -113,6 +116,7 @@ int spin_connection(int c_sock, int r_sock){
         //TODO test if sockets are open, return if not
         verify_e(poll(fds, 2, TIMEOUT),
             "poll", free_resources_signal); CHECK_FLAG;
+        printf("[%d/%d]: polled c/r: %d/%d\n", c_sock, r_sock, fds[0].revents, fds[1].revents);
         if(fds[0].revents != 0){
             transmit(c_sock, r_sock);
         }
@@ -125,7 +129,8 @@ int spin_connection(int c_sock, int r_sock){
 }
 
 void * connection_body(void * raw_socket){
-    int c_sock = (int) raw_socket; // client socket
+    int c_sock = *((int *) raw_socket); // client socket
+    free((int*)raw_socket);
     int r_sock = NO_SOCK; // receiver socket
     if(init_connection(&r_sock)){
         spin_connection(c_sock, r_sock);
