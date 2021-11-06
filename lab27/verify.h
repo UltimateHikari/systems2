@@ -3,7 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #define BUFLEN 128
-#define BACKLOG 10
+#define BACKLOG 500
 #define NO_CLEANUP NULL
 
 int verify(int rc, const char* action, void(*free_resources)()){

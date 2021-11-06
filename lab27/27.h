@@ -19,7 +19,7 @@
 #define BUFSIZE 1024
 #define DEFAULT_PROTOCOL 0
 
-#define CHECK_FLAG if(exit_flag){ return 0; }
+#define CHECK_FLAG if(exit_flag){ printf("%d\n", num_threads); return 0; }
 #define NO_SOCK -1
 #define NO_ADDR NULL
 #define MAX_THREADS 510
