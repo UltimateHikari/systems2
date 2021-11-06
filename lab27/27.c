@@ -80,13 +80,14 @@ void * connection_body(void * raw_socket);
 
 int spin_server(int sc){
     printf("Spinning server...\n");
-    while(!exit_flag){
+    while(!exit_flag && num_threads < MAX_THREADS){
         int* cl = (int*)malloc(sizeof(int));
         *cl = verify_e(accept(sc, NO_ADDR, NO_ADDR),
             "ssock accept", free_resources_signal); CHECK_FLAG;
         verify(pthread_create(
             threads + num_threads, NULL, connection_body, (void *)cl),
             "create", free_resources_signal); CHECK_FLAG;
+        num_threads++;
     }
 
     return SUCCESS;
