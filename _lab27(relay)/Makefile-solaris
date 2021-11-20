@@ -1,0 +1,2 @@
+lab27:
+	gcc src/27.c -lpthread -lsocket -Wall -Wextra -o lab27
