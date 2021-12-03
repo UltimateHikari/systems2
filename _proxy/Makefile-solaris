@@ -1,0 +1,2 @@
+proxy:
+	gcc src/main.c -lpthread -lsocket -Wall -Wextra -o proxy
