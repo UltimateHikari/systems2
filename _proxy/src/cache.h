@@ -3,6 +3,7 @@
 #include "verify.h"
 #include <stdlib.h>
 #define E_DESTROY -1
+#define S_DESTROY 0
 #define BE_INF -1
 #define MCI_DEAD -1
 #define MCI_DONE 0
@@ -66,12 +67,8 @@ typedef struct {
 	size_t collect_threshold_percent;
 
 	// lock for preserving correctness of iteration
-	// when list pointers getting rearrange
+	// when list entries can get removed/added
 	pthread_mutex_t structural_lock;
-
-	// lock for snapshotting cache state
-	// when collector collects
-	pthread_mutex_t collector_lock;
 
 	Cache_entry *head;
 } Cache;
@@ -86,4 +83,8 @@ int cache_destroy(Cache * c);
 // or NULL if not found
 Cache_entry * cache_find(Cache *c, Request_metadata* mdata);
 
-Cache_entry * cache_put(Cache *c, Request_metadata *mdata, size_t mci);
+Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request_metadata *mdata, size_t mci);
+// for collector
+int centry_destroy(Cache_entry * c);
+
+
