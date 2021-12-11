@@ -2,9 +2,12 @@
 #include <sys/types.h>
 #include "verify.h"
 #include <stdlib.h>
+#include <stdbool.h>
 #define E_DESTROY -1
 #define S_DESTROY 0
-#define BE_INF -1
+#define E_NOSPACE -1
+#define S_CHECK 0
+#define BE_INF 10*1024*1024
 #define MCI_DEAD -1
 #define MCI_DONE 0
 
@@ -55,7 +58,6 @@ typedef struct Cache_entry{
 
 	// data for collector (changing with cache's collector lock)
 	size_t readers_amount;
-	size_t last_access_ms;
 
 	Chunk *head;
 	struct Cache_entry *next;
@@ -64,27 +66,27 @@ typedef struct Cache_entry{
 typedef struct {
 	size_t chunk_size_bytes;
 	size_t max_size_bytes;
+	size_t current_expected_bytes;
 	size_t collect_threshold_percent;
 
 	// lock for preserving correctness of iteration
 	// when list entries can get removed/added
 	pthread_mutex_t structural_lock;
 
+	// head is oldest, kept by adding as last
 	Cache_entry *head;
+	Cache_entry *last;
+	Cache_entry *marked;
 } Cache;
+
 
 // returns initialized cache 
 // or NULL if error happened
 Cache * cache_init();
-
 int cache_destroy(Cache * c);
-
 // returns entry on success 
 // or NULL if not found
 Cache_entry * cache_find(Cache *c, Request_metadata* mdata);
-
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request_metadata *mdata, size_t mci);
-// for collector
-int centry_destroy(Cache_entry * c);
 
 
