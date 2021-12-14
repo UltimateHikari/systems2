@@ -4,6 +4,7 @@
 
 #define PARSE 0
 #define READ 1
+#define REQBUFSIZE 1024
 
 /**
  * Client_connection:
@@ -13,7 +14,7 @@
  */
 
 typedef struct {
-	char *buf;
+	char buf[REQBUFSIZE];
 	char *hostname;
 } Request;
 

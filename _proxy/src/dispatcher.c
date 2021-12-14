@@ -8,6 +8,8 @@
 #define CHECK_FLAG if(check_flag()){ return -1; } //TODO replace universal error
 
 pthread_t threads[MAX_THREADS];
+int num_threads = 0;
+
 
 int init_listener(int *listener_socket, int listener_port){
   struct sockaddr_in addr;
@@ -29,7 +31,6 @@ int init_listener(int *listener_socket, int listener_port){
 
 int spin_listener(int listener_socket){
   printf("Spinning server...\n");
-  int num_threads = 0;
 
   while(!check_flag() && num_threads < MAX_THREADS){
   	Client_connection *cc = init_connection();
@@ -42,4 +43,11 @@ int spin_listener(int listener_socket){
   }
 
   return S_CONNECT;
+}
+
+void join_threads(){
+    for(int i = 0; i < num_threads; i++){
+        verify(pthread_join(threads[i], NULL),
+            "join", NO_CLEANUP);
+    }
 }
