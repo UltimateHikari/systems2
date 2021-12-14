@@ -1,4 +1,15 @@
 #include "verify.h"
+#define BUFLEN 128
+
+int exit_flag = 0;
+
+void flag_signal(){
+    exit_flag = 1;
+}
+
+int check_flag(){
+    return exit_flag == 1;
+}
 
 int verify(int rc, const char* action, void(*free_resources)()){
     char err_buf[BUFLEN];

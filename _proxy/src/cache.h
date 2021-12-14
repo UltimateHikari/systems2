@@ -1,12 +1,12 @@
+#ifndef CACHE_H
+#define CACHE_H
+
 #include <pthread.h>
 #include <sys/types.h>
 #include "verify.h"
 #include <stdlib.h>
 #include <stdbool.h>
-#define E_DESTROY -1
-#define S_DESTROY 0
-#define E_NOSPACE -1
-#define S_CHECK 0
+#include "prerror.h"
 #define BE_INF 10*1024*1024
 #define MCI_DEAD -1
 #define MCI_DONE 0
@@ -31,7 +31,7 @@ typedef struct Chunk{
  * will be cached as 2 separate responces;
  */
 
-typedef struct {
+typedef struct { //TODO unify with Request; looks like resolving + putting mime is enough
 	size_t type;
 	char * hostname;
 	size_t port;
@@ -89,4 +89,4 @@ int cache_destroy(Cache * c);
 Cache_entry * cache_find(Cache *c, Request_metadata* mdata);
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request_metadata *mdata, size_t mci);
 
-
+#endif
