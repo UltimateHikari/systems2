@@ -1,3 +1,6 @@
+#ifndef CLIENT_H
+#define CLIENT_H
+
 #include <pthread.h>
 #include <unistd.h>
 #include <assert.h>
@@ -15,6 +18,14 @@
  * connects to cache and starts reading
  */
 
+enum State{
+	Parse,
+	Read, // from cache
+	Proxy,
+	Done
+};
+
+
 typedef struct {
 	char buf[REQBUFSIZE];
 	char *hostname;
@@ -22,9 +33,11 @@ typedef struct {
 
 typedef struct{
 	int socket;
+	Cache *cache;
 	Cache_entry *entry;
 	Request *request;
 	int state;
+	int labclass;
 } Client_connection;
 
 Request *make_request();
@@ -34,3 +47,5 @@ Client_connection *init_connection();
 int free_connection(Client_connection *c);
 
 void * client_body(void *raw_struct);
+
+#endif

@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include "prerror.h"
 #include "verify.h"
-#include "client.h"
+#include "cache.h"
 
 
 #define BACKLOG 500

@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include "client.h"
 
 typedef struct{
 	int socket;
@@ -8,5 +9,6 @@ typedef struct{
 // pulls stuff from socket to cache
 
 int server_init_connection();
-int server_read_chunk();
+int spin_server_connection(Client_connection *c);
+int server_read_chunk(Server_Connection *c);
 int server_destroy_connection(Server_Connection *c);

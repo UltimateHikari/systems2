@@ -1,4 +1,6 @@
 #include "dispatcher.h"
+#include "client.h"
+
 
 #define MAX_THREADS 100
 #define DEFAULT_PROTOCOL 0
@@ -31,10 +33,16 @@ int init_listener(int *listener_socket, int listener_port){
 }
 
 int spin_listener(int listener_socket){
+	printf("Spinning cache...\n");
+	Cache *cache = cache_init();
+	if(cache == NULL){
+		printf("cannot init cache, exiting\n");
+		pthread_exit(NULL);
+	}
   printf("Spinning server...\n");
 
   while(!check_flag() && num_threads < MAX_THREADS){
-  	Client_connection *cc = init_connection();
+  	Client_connection *cc = init_connection(MTCLASS, cache);
       cc->socket = verify_e(accept(listener_socket, NO_ADDR, NO_ADDR),
           "ssock accept", flag_signal); CHECK_FLAG;
       verify(pthread_create(
