@@ -1,4 +1,6 @@
 #include <pthread.h>
+#include <unistd.h>
+#include <assert.h>
 #include "prerror.h"
 #include "cache.h"
 

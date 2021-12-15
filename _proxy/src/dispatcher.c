@@ -2,10 +2,9 @@
 
 #define MAX_THREADS 100
 #define DEFAULT_PROTOCOL 0
-#define NO_SOCK -1
 #define NO_ADDR NULL
 
-#define CHECK_FLAG if(check_flag()){ return -1; } //TODO replace universal error
+#define CHECK_FLAG if(check_flag()){ return E_FLAG; } //TODO replace universal error
 
 pthread_t threads[MAX_THREADS];
 int num_threads = 0;
@@ -22,8 +21,10 @@ int init_listener(int *listener_socket, int listener_port){
 	addr.sin_port = htons(listener_port);
 	addr.sin_addr.s_addr = INADDR_ANY; //all interfaces
 
+
 	verify_e(bind(*listener_socket, (struct sockaddr*)&addr, sizeof(addr)), 
 	    "ssock bind", flag_signal); CHECK_FLAG;
+
 	verify_e(listen(*listener_socket, BACKLOG), 
 	    "ssock listen", flag_signal); CHECK_FLAG;
 	return S_CONNECT;
