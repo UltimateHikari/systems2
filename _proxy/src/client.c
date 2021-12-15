@@ -23,6 +23,7 @@ void client_read(Client_connection *c);
 Request* make_request(){
 	Request * r = (Request*)malloc(sizeof(Request));
 	r->hostname = NULL;
+	r->hostname_len = E_COMPARE;
 	return r;
 }
 

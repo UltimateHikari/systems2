@@ -26,4 +26,6 @@
 #define MTCLASS 32
 #define WTCLASS 33
 
+#define E_COMPARE -1
+
 #endif

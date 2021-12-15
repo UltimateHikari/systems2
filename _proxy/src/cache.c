@@ -28,8 +28,10 @@ void cache_cleanup(){
 }
 
 int mdata_is_equal(Request * a, Request *b){
-	// TODO: stub
-	return 1;
+	if(a == NULL || b == NULL || a->hostname == NULL || b->hostname == NULL || a->hostname_len == E_COMPARE){
+		return E_COMPARE;
+	}
+	return (strncmp(a->hostname, b->hostname, a->hostname_len) == 0);
 }
 
 size_t curtime(){
