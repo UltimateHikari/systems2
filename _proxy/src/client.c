@@ -1,8 +1,15 @@
+#include <string.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <assert.h>
+
 #include "client.h"
+#include "prerror.h"
 #include "verify.h"
 #include "server.h"
+#include "cache.h"
 #include "picohttpparser.h"
-#include <string.h>
 
 // local declarations
 int parse_into_request(Client_connection *c);
@@ -54,7 +61,7 @@ int free_connection(Client_connection *c){
 }
 
 void free_on_error(Client_connection *c, const char* error){
-	fprintf("Error: client connection: %s %d\n", error, c->socket);
+	fprintf(stderr, "Error: client connection: %s %d\n", error, c->socket);
 	free_request(c->request);
 	c->state = Done;
 }
@@ -79,10 +86,12 @@ int parse_into_request(Client_connection *c){
 		return E_NULL;
 	}
 	char *buf = c->request->buf;
-	const char *method, *path;
+	const char *path = c->request->hostname;
+	size_t * path_len = &(c->request->hostname_len);
+	const char *method;
 	int pret, minor_version;
 	struct phr_header headers[100];
-	size_t buflen = 0, prevbuflen = 0, method_len, path_len, num_headers;
+	size_t buflen = 0, prevbuflen = 0, method_len, num_headers;
 	ssize_t rret;
 
 	while (1) {
@@ -91,7 +100,7 @@ int parse_into_request(Client_connection *c){
 	    buflen += rret;
 
 	    num_headers = sizeof(headers) / sizeof(headers[0]);
-	    pret = phr_parse_request(buf, buflen, &method, &method_len, &path, &path_len,
+	    pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
 	                             &minor_version, headers, &num_headers, prevbuflen);
 	    if (pret > 0)
 	        break; /* successfully parsed the request */
@@ -109,7 +118,7 @@ int parse_into_request(Client_connection *c){
 		return E_WMETHOD;
 	}
 
-	log_request(pret, method_len, method, path_len, path, minor_version, num_headers, headers);
+	log_request(pret, method_len, method, *path_len, path, minor_version, num_headers, headers);
 
 	return S_PARSE;
 }
@@ -132,8 +141,8 @@ void * client_body(void *raw_struct){
 		default:
 			// if smh scheduled as done
 			free_connection(c);
-			pthread_exit(NULL);
 	}
+	pthread_exit(NULL);
 }
 
 void client_register(Client_connection *c){

@@ -1,3 +1,6 @@
+#include <stdio.h>
+
+#include "prerror.h"
 #include "server.h"
 
 int spin_server_connection(Client_connection *c){

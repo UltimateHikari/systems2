@@ -1,10 +1,5 @@
 #include <pthread.h>
-#include "client.h"
-
-typedef struct{
-	int socket;
-	Cache_entry *entry;
-} Server_Connection;
+#include "structs.h"
 
 // pulls stuff from socket to cache
 

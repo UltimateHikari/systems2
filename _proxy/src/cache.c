@@ -1,11 +1,18 @@
+#include <pthread.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+#include "client.h"
+#include "verify.h"
+#include "prerror.h"
 #include "cache.h"
 
 // Translation unit-local funcs
 void cache_cleanup();
-int mdata_is_equal(Request_metadata * a, Request_metadata *b);
+int mdata_is_equal(Request * a, Request *b);
 size_t curtime();
 
-Cache_entry * centry_init(size_t bytes_expected, Request_metadata *mdata, size_t mci);
+Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci);
 int centry_destroy(Cache_entry * c);
 int chunk_destroy(Chunk *c);
 
@@ -20,7 +27,7 @@ void cache_cleanup(){
 	exit(-1);
 }
 
-int mdata_is_equal(Request_metadata * a, Request_metadata *b){
+int mdata_is_equal(Request * a, Request *b){
 	// TODO: stub
 	return 1;
 }
@@ -31,13 +38,14 @@ size_t curtime(){
 	return init.tv_sec;
 }
 
-Cache_entry * centry_init(size_t bytes_expected, Request_metadata *mdata, size_t mci){
+Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci){
 	Cache_entry * res = (Cache_entry*)malloc(sizeof(Cache_entry));
 	RETURN_NULL_IF_NULL(res);
 
 	res->bytes_ready = 0;
 	res->bytes_expected = bytes_expected;
 	res->mdata = mdata;
+	res->mime = NULL;
 	res->master_connection_id = mci;
 	res->readers_amount = 1;
 	res->head = NULL;
@@ -168,7 +176,7 @@ int cache_destroy(Cache * c){
 
 // returns entry on success 
 // or NULL if not found
-Cache_entry * cache_find(Cache * c, Request_metadata* mdata){
+Cache_entry * cache_find(Cache * c, Request* mdata){
 	RETURN_NULL_IF_NULL(c);
 	Cache_entry *current = c->head;
 
@@ -186,7 +194,7 @@ Cache_entry * cache_find(Cache * c, Request_metadata* mdata){
 	return NULL;
 }
 
-Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request_metadata *mdata, size_t mci){
+Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, size_t mci){
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mci);
 	Cache_entry *marked, *next;
 	bool is_nospace = false;

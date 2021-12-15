@@ -1,12 +1,4 @@
 // MT/ worker-T type accept & dispatch
-#include <pthread.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include "prerror.h"
-#include "verify.h"
-#include "cache.h"
-
 
 #define BACKLOG 500
 

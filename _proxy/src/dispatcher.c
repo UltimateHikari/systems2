@@ -1,4 +1,12 @@
+#include <pthread.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include "prerror.h"
+#include "verify.h"
+
 #include "dispatcher.h"
+#include "cache.h"
 #include "client.h"
 
 
