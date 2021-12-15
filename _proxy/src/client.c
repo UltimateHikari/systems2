@@ -11,12 +11,17 @@
 #include "cache.h"
 #include "picohttpparser.h"
 
+#define UNREGISTER_FROM_READERS verify(pthread_mutex_lock(&(c->entry->lag_lock)), "lock for unreg", NO_CLEANUP); \
+		c->entry->readers_amount--; \
+		verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP);
+
 // local declarations
 int parse_into_request(Client_connection *c);
 void free_on_error(Client_connection *c, const char* error);
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers);
 void client_register(Client_connection *c);
 void client_read(Client_connection *c);
+void client_proxy(Client_connection *c);
 
 // definitions
 
@@ -46,6 +51,7 @@ Client_connection *init_connection(int class, Cache *cache){
 	c->request = NULL;
 	c->state = Parse;
 	c->labclass = class;
+	c->bytes_read = 0;
 	return c;
 }
 
@@ -139,6 +145,9 @@ void * client_body(void *raw_struct){
 		case Read:
 			client_read(c);
 			break;
+		case Proxy:
+			client_proxy(c);
+			break;
 		default:
 			// if smh scheduled as done
 			free_connection(c);
@@ -170,7 +179,42 @@ void client_register(Client_connection *c){
 void client_read(Client_connection *c){
 	//TODO: stub
 	// reads N chunks and returns
+	//get position to read
+	verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP);
+		size_t bytes_ready = c->entry->bytes_ready;
+		c->entry->readers_amount++;
+	verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP);
+	//skip to reading chunk
+	size_t bytes_handled = 0;
+	Chunk * current = c->entry->head;
+	while(bytes_handled < c->bytes_read){
+		if(current == NULL){
+			UNREGISTER_FROM_READERS;
+			free_on_error(c, "chunks have less than bytes_ready");
+		}
+		bytes_handled += current->size;
+		current = current->next;
+	}
+	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
+		if(current == NULL){
+			UNREGISTER_FROM_READERS;
+			free_on_error(c, "chunks have less than bytes_ready");
+		}
+		size_t bytes_written = 0;
+		int wret;
+		while( (wret = write(c->socket, current->data + bytes_written, current->size - bytes_written)) > 0){
+			bytes_written += wret;
+		}
+		c->bytes_read += bytes_written;
+		if(wret < 0 || bytes_written < current->size){
+			UNREGISTER_FROM_READERS;
+			free_on_error(c, "write error");
+		}
+		current = current-> next;
+	}
+
 	if(c->labclass == WTCLASS){
+		UNREGISTER_FROM_READERS;
 		return;
 	}
 	if(c->labclass == MTCLASS){
@@ -178,3 +222,6 @@ void client_read(Client_connection *c){
 	}
 }
 
+void client_proxy(Client_connection *c){
+	//TODO: stub
+}

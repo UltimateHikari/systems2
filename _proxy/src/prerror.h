@@ -22,10 +22,25 @@
 
 #define E_FLAG -19 //exiting by flag
 
-// lab class control:
+#define E_COMPARE -1
+
+/**
+ *
+ * Control defines (mb migrate to params?)
+ *
+ */
+
 #define MTCLASS 32
 #define WTCLASS 33
 
-#define E_COMPARE -1
+// Cache init:
+#define CHUNK_SIZE_BYTES 4096
+#define MAX_SIZE_BYTES 10*4096*1024
+#define DEFAULT_THRESHOLD 75
+
+// Client read:
+#define CHUNKS_TO_READ 10
+
+
 
 #endif

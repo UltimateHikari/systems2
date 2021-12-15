@@ -28,7 +28,7 @@ void cache_cleanup(){
 }
 
 int mdata_is_equal(Request * a, Request *b){
-	if(a == NULL || b == NULL || a->hostname == NULL || b->hostname == NULL || a->hostname_len == E_COMPARE){
+	if(a == NULL || b == NULL || a->hostname == NULL || b->hostname == NULL || a->hostname_len == (size_t)E_COMPARE){
 		return E_COMPARE;
 	}
 	return (strncmp(a->hostname, b->hostname, a->hostname_len) == 0);
@@ -146,9 +146,9 @@ Cache * cache_init(){
 	Cache * res = (Cache*)malloc(sizeof(Cache));
 	RETURN_NULL_IF_NULL(res);
 
-	res->chunk_size_bytes = 4096;
-	res->max_size_bytes = 10*4096*1024;
-	res->collect_threshold_percent = 50;
+	res->chunk_size_bytes = CHUNK_SIZE_BYTES;
+	res->max_size_bytes = MAX_SIZE_BYTES;
+	res->collect_threshold_percent = DEFAULT_THRESHOLD;
 	res->current_expected_bytes = 0;
 	res->head = NULL;
 	res->last = NULL;

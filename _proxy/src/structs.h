@@ -91,6 +91,7 @@ typedef struct{
 	Request *request;
 	int state;
 	int labclass;
+	size_t bytes_read;
 } Client_connection;
 
 typedef struct{
