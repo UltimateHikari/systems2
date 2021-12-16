@@ -13,4 +13,8 @@ int cache_destroy(Cache * c);
 Cache_entry * cache_find(Cache *c, Request* mdata);
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, size_t mci);
 
+Chunk *chunk_init();
+int chunk_destroy(Chunk *c);
+
+
 #endif

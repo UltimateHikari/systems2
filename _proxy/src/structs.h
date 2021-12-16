@@ -79,10 +79,16 @@ typedef struct {
 
 enum State{
 	Parse,
-	Read, // from cache
+	Read, // from cache for client and to cache for server
 	Proxy,
 	Done
 };
+
+typedef struct{
+	int socket;
+	Cache_entry *entry;
+	int state;
+} Server_Connection;
 
 typedef struct{
 	int socket;
@@ -92,11 +98,7 @@ typedef struct{
 	int state;
 	int labclass;
 	size_t bytes_read;
+	Server_Connection *c;
 } Client_connection;
-
-typedef struct{
-	int socket;
-	Cache_entry *entry;
-} Server_Connection;
 
 #endif

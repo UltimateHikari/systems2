@@ -14,7 +14,7 @@
 #define DEFAULT_PROTOCOL 0
 #define NO_ADDR NULL
 
-#define CHECK_FLAG if(check_flag()){ return E_FLAG; } //TODO replace universal error
+#define CHECK_FLAG if(check_flag()){ return E_FLAG; }
 
 pthread_t threads[MAX_THREADS];
 int num_threads = 0;

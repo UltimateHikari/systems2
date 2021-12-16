@@ -52,6 +52,7 @@ Client_connection *init_connection(int class, Cache *cache){
 	c->state = Parse;
 	c->labclass = class;
 	c->bytes_read = 0;
+	c->c = NULL;
 	return c;
 }
 

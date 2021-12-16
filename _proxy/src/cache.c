@@ -14,7 +14,6 @@ size_t curtime();
 
 Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci);
 int centry_destroy(Cache_entry * c);
-int chunk_destroy(Chunk *c);
 
 int cache_garbage_check(Cache *c, size_t bytes_expected);
 Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect);
@@ -75,6 +74,11 @@ int centry_destroy(Cache_entry * c){
 	free(c);
 
 	return S_DESTROY;
+}
+
+Chunk *chunk_init(){
+	//TODO: stub
+	return NULL;
 }
 
 int chunk_destroy(Chunk *c){
