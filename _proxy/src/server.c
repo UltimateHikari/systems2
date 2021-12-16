@@ -33,32 +33,32 @@ Server_Connection * server_init_connection(Cache_entry * centry){
 }
 
 int server_connect(Server_Connection *c){
-  int sd;
-  struct addrinfo hints = {
-  	.ai_family = AF_INET,
-  	.ai_socktype = SOCK_STREAM
-  };
-  struct addrinfo *addrs, *addr;
-  char *port_str = HTTP_PORT;
-  char* hostname = c->entry->mdata->hostname;
+	int sd;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	struct addrinfo *addrs, *addr;
+	char *port_str = HTTP_PORT;
+	char* hostname = c->entry->mdata->hostname;
 
-  verify_e(getaddrinfo(hostname, port_str, &hints, &addrs), "resolving", flag_signal); CHECK_FLAG;
+	verify_e(getaddrinfo(hostname, port_str, &hints, &addrs), "resolving", flag_signal); CHECK_FLAG;
 
-  for(addr = addrs; addr != NULL; addr = addr->ai_next){
-      sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", flag_signal); CHECK_FLAG;
+	for(addr = addrs; addr != NULL; addr = addr->ai_next){
+		sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", flag_signal); CHECK_FLAG;
 
-      if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP) == 0)
-          break; //succesfully connected;
+		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP) == 0)
+				break; //succesfully connected;
 
-      close(sd);
-      sd = -1;
-  }
-  if(sd == -1){
-  	return E_CONNECT;
-  }
-  c->socket = sd;
-  printf("[%d]: connected to %s\n", sd, hostname);
-  return S_CONNECT;
+		close(sd);
+		sd = -1;
+	}
+	if(sd == -1){
+		return E_CONNECT;
+	}
+	c->socket = sd;
+	printf("[%d]: connected to %s\n", sd, hostname);
+	return S_CONNECT;
 }
 
 int spin_server_connection(Client_connection *c){

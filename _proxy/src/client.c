@@ -81,8 +81,8 @@ void log_request(int pret, size_t method_len, const char* method, size_t path_le
 	printf("HTTP version is 1.%d\n", minor_version);
 	printf("headers:\n");
 	for (size_t i = 0; i != num_headers; ++i) {
-	    printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
-	           (int)headers[i].value_len, headers[i].value);
+		printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+			(int)headers[i].value_len, headers[i].value);
 }
 }
 
@@ -104,21 +104,21 @@ int parse_into_request(Client_connection *c){
 
 	while (1) {
 			verify_e(rret = read(c->socket, buf + buflen, REQBUFSIZE - buflen), "read for parse", flag_signal);
-	    prevbuflen = buflen;
-	    buflen += rret;
+			prevbuflen = buflen;
+			buflen += rret;
 
-	    num_headers = sizeof(headers) / sizeof(headers[0]);
-	    pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
-	                             &minor_version, headers, &num_headers, prevbuflen);
-	    if (pret > 0)
-	        break; /* successfully parsed the request */
-	    else if (pret == -1)
-	        return E_PARSE;
-	    /* request is incomplete, continue the loop */
-	    /* also MT-safe */
-	    assert(pret == -2);
-	    if (buflen == REQBUFSIZE)
-	        return E_BIGREQ;
+			num_headers = sizeof(headers) / sizeof(headers[0]);
+			pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
+					&minor_version, headers, &num_headers, prevbuflen);
+			if (pret > 0)
+					break; /* successfully parsed the request */
+			else if (pret == -1)
+					return E_PARSE;
+			/* request is incomplete, continue the loop */
+			/* also MT-safe */
+			assert(pret == -2);
+			if (buflen == REQBUFSIZE)
+					return E_BIGREQ;
 	}
 
 	if(strncmp(method, "GET", 3) != 0){
