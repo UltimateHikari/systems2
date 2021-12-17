@@ -21,7 +21,7 @@ void free_on_error(Client_connection *c, const char* error);
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers);
 void client_register(Client_connection *c);
 void client_read_n(Client_connection *c);
-void client_proxy_n(Client_connection *c);
+int client_proxy_n(Client_connection *c);
 
 // definitions
 
@@ -58,6 +58,7 @@ int free_connection(Client_connection *c){
 	if(c == NULL){
 		return E_DESTROY;
 	}
+	free_request(c->request);
 	if(c->socket != NO_SOCK){
 		close(c->socket);
 	}
@@ -67,8 +68,10 @@ int free_connection(Client_connection *c){
 }
 
 void free_on_error(Client_connection *c, const char* error){
+	// TODO free server_connection if proxying?
 	fprintf(stderr, "Error: client connection: %s, fd:[%d]\n", error, c->socket);
 	free_request(c->request);
+	c->request = NULL;
 	c->state = Done;
 }
 
@@ -151,7 +154,7 @@ void * client_body(void *raw_struct){
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
-	int freed = 0, labclass = /*c->labclass*/ WTCLASS;
+	int freed = 0, labclass = c->labclass;
 
 	do{
 		switch(c->state){
@@ -166,6 +169,7 @@ void * client_body(void *raw_struct){
 				break;
 			default:
 				// if smh scheduled as done
+				flog("Client: body freeing");
 				free_connection(c);
 				freed = 1;
 		}
@@ -214,6 +218,7 @@ void client_read_n(Client_connection *c){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
 			free_on_error(c, "chunks have less than bytes_ready");
+			return;
 		}
 		bytes_handled += current->size;
 		current = current->next;
@@ -222,6 +227,7 @@ void client_read_n(Client_connection *c){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
 			free_on_error(c, "chunks have less than bytes_ready");
+			return;
 		}
 		size_t bytes_written = 0;
 		int wret;
@@ -232,6 +238,7 @@ void client_read_n(Client_connection *c){
 		if(wret < 0 || bytes_written < current->size){
 			UNREGISTER_FROM_READERS;
 			free_on_error(c, "write error");
+			return;
 		}
 		current = current-> next;
 	}
@@ -241,11 +248,69 @@ void client_read_n(Client_connection *c){
 		return;
 	}
 	if(c->labclass == MTCLASS){
-		// hol'up on cond var in centry
+		// TODO: hol'up on cond var in centry
 	}
 }
 
-void client_proxy_n(Client_connection *c){
+int client_proxy_n(Client_connection *c){
 	flog("Client: proxy_n");
-	//TODO: stub
+	Server_Connection *sc = c->c;
+
+	if(sc->buflen > 0){
+		if(proxy_write(c) == E_SEND){
+			return E_SEND;
+		}
+	}
+
+	for(int i = 0; (i < CHUNKS_TO_READ); i++){
+		if(proxy_read(c) == E_SEND){
+			return E_SEND;
+		}
+		if(c->state == Done){
+			break;
+		}
+		if(proxy_write(c) == E_SEND){
+			return E_SEND;
+		}
+	}
+	return S_SEND;
+}
+
+int proxy_read(Client_connection *c){
+	flog("Client: proxy_read");
+	Server_Connection *sc = c->c;
+
+	int wret = verify_e(read(sc->socket, sc->buf, REQBUFSIZE), "proxying read", NO_CLEANUP);;
+
+	if(wret < 0){
+		free_on_error(c, "proxying read");
+		return E_SEND;
+	}
+	sc->buflen = (size_t)wret;
+	if(wret == 0){
+		flog("proxying read: EOF reached");
+		c->state = Done;
+		return S_SEND;
+	}
+	return S_SEND;
+}
+
+int proxy_write(Client_connection *c){
+	flog("Client: proxy_write");
+	Server_Connection *sc = c->c;
+
+	if(sc->buflen == 0){
+		c->state = Done;
+		return S_SEND;
+	}
+
+	int bytes_written = 0, wret;
+	while((wret = write(c->socket, sc->buf + bytes_written, sc->buflen - bytes_written)) > 0){
+		bytes_written += wret;
+	}
+	if(wret < 0){
+		free_on_error(c, "proxying write error");
+		return E_SEND;
+	}
+	return S_SEND;
 }

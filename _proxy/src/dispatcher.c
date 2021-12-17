@@ -71,4 +71,5 @@ void join_threads(){
 
 int dispatcher_spin_server_reader(Server_Connection *sc){
 	//TODO: stub
+	return 0;
 }

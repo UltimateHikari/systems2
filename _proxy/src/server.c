@@ -165,6 +165,7 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 			verify_e(rret = read(sc->socket, buf + buflen, REQBUFSIZE - buflen), "response read for parse", flag_signal);
 			prevbuflen = buflen;
 			buflen += rret;
+			sc->buflen = buflen;
 
 			num_headers = sizeof(headers) / sizeof(headers[0]);
 			pret = phr_parse_response(buf, buflen, &minor_version, status,
