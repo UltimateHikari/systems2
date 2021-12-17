@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "prerror.h"
 #include "verify.h"
@@ -44,13 +45,22 @@ int server_connect(Client_connection *cl){
 	};
 	struct addrinfo *addrs, *addr;
 	char *port_str = HTTP_PORT;
-	char* hostname = cl->request->hostname;
 
-	verify_e(getaddrinfo(hostname, port_str, &hints, &addrs), "resolving", flag_signal); CHECK_FLAG;
+
+	char *tmp_hostname = (char*)malloc(cl->request->hostname_len);
+	strncpy(cl->request->hostname, tmp_hostname, cl->request->hostname_len);
+	fprintf(stderr, "Resolving %s...\n", tmp_hostname);
+
+	if(verify_e(getaddrinfo(
+		tmp_hostname, port_str, &hints, &addrs), "resolving", NO_CLEANUP) < 0){
+		free(tmp_hostname);
+		return E_RESOLVE;
+	}
+	free(tmp_hostname);
 
 	for(addr = addrs; addr != NULL; addr = addr->ai_next){
 		sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", flag_signal); CHECK_FLAG;
-
+		fprintf(stderr, "Connecting to %s...\n", addr->ai_addr->sa_data);
 		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP) == 0)
 				break; //succesfully connected;
 
@@ -61,7 +71,7 @@ int server_connect(Client_connection *cl){
 		return E_CONNECT;
 	}
 	c->socket = sd;
-	printf("[%d]: connected to %s\n", sd, hostname);
+	fprintf(stderr, "[%d]: connected to %.*s\n", sd, (int)cl->request->hostname_len, cl->request->hostname);
 	return S_CONNECT;
 }
 

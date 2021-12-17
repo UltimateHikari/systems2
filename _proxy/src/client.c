@@ -37,9 +37,6 @@ int free_request(Request *r){
 	if(r == NULL){
 		return E_DESTROY;
 	}
-	if(r->hostname != NULL){
-		free(r->hostname);
-	}
 	free(r);
 	return S_DESTROY;
 }
@@ -96,7 +93,7 @@ int parse_into_request(Client_connection *c){
 		return E_NULL;
 	}
 	char *buf = c->request->buf;
-	const char *path = c->request->hostname;
+	const char **path = &(c->request->hostname);
 	size_t * path_len = &(c->request->hostname_len);
 	const char *method;
 	int pret, minor_version;
@@ -111,7 +108,7 @@ int parse_into_request(Client_connection *c){
 			c->request->buflen = buflen;
 
 			num_headers = sizeof(headers) / sizeof(headers[0]);
-			pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
+			pret = phr_parse_request(buf, buflen, &method, &method_len, path, path_len,
 					&minor_version, headers, &num_headers, prevbuflen);
 			if (pret > 0)
 					break; /* successfully parsed the request */
@@ -129,7 +126,7 @@ int parse_into_request(Client_connection *c){
 		return E_WMETHOD;
 	}
 
-	log_request(pret, method_len, method, *path_len, path, minor_version, num_headers, headers);
+	log_request(pret, method_len, method, *path_len, *path, minor_version, num_headers, headers);
 
 	return S_PARSE;
 }

@@ -8,6 +8,7 @@
 #define E_NOSPACE -1
 #define S_CHECK 0
 // connections
+#define E_RESOLVE -2
 #define E_CONNECT -1
 #define S_CONNECT 1
 
