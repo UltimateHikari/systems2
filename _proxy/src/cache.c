@@ -12,7 +12,7 @@ void cache_cleanup();
 int mdata_is_equal(Request * a, Request *b);
 size_t curtime();
 
-Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci);
+Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int mime_len);
 int centry_destroy(Cache_entry * c);
 
 int cache_garbage_check(Cache *c, size_t bytes_expected);
@@ -40,15 +40,16 @@ size_t curtime(){
 	return init.tv_sec;
 }
 
-Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci){
+Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int mime_len){
 	Cache_entry * res = (Cache_entry*)malloc(sizeof(Cache_entry));
 	RETURN_NULL_IF_NULL(res);
 
 	res->bytes_ready = 0;
 	res->bytes_expected = bytes_expected;
 	res->mdata = mdata;
-	res->mime = NULL;
-	res->master_connection_id = mci;
+	res->mime = mime;
+	res->mime_len = mime_len;
+	res->master_connection_id = MCI_ALIVE;
 	res->readers_amount = 1;
 	res->head = NULL;
 	res->next = NULL;
@@ -61,6 +62,10 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, size_t mci){
 int centry_destroy(Cache_entry * c){
 	if(c == NULL){
 		return E_DESTROY;
+	}
+
+	if(c->mime != NULL){
+		free(c->mime);
 	}
 
 	Chunk *current = c->head;
@@ -204,9 +209,9 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 	return NULL;
 }
 
-Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, size_t mci){
+Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *mime, int mime_len){
 	flog("Cache: put");
-	Cache_entry * newentry = centry_init(bytes_expected, mdata, mci);
+	Cache_entry * newentry = centry_init(bytes_expected, mdata, mime, mime_len);
 	Cache_entry *marked, *next;
 	bool is_nospace = false;
 

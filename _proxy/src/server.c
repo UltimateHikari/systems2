@@ -11,6 +11,7 @@
 #include "verify.h"
 #include "server.h"
 #include "cache.h"
+#include "dispatcher.h"
 #include "picohttpparser.h"
 
 
@@ -20,9 +21,12 @@
 
 //local stuff
 
-int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len);
-int server_connect(Client_connection *cl);
 Server_Connection * server_init_connection(Client_connection * cl);
+int server_connect(Client_connection *cl);
+int server_send_request(Client_connection *c);
+void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers);
+int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len);
+
 
 Server_Connection * server_init_connection(Client_connection * cl){
 	flog("Server: init");
@@ -80,7 +84,7 @@ int server_connect(Client_connection *cl){
 	return S_CONNECT;
 }
 
-int spin_server_connection(Client_connection *c, size_t *bytes_expected){
+int spin_server_connection(Client_connection *c){
 	flog("Server: spin");
 	Server_Connection *sc = server_init_connection(c);
 	if(sc == NULL){
@@ -96,13 +100,30 @@ int spin_server_connection(Client_connection *c, size_t *bytes_expected){
 	server_parse_into_response(sc, &status, &response_bytes_expected, &mime, &mime_len);
 
 	// TODO: then find out if read or proxy c->state should be
-	// and poke dispacher for registering if first
+	// and poke dispacher for registering if read
 	// proxying is as a whole on client
 
 	if(status == 200){
-		
+		// put in cache
+		flog("Trying Reading...");
+		sc->state = Read;
+		c->state = Read;
+		if(response_bytes_expected == E_COMPARE){
+			// no content-length was provided
+			response_bytes_expected = BE_INF;
+		}
+		if(cache_put(c->cache, response_bytes_expected, c->request, mime, mime_len) == NULL){
+			flog("...Started Proxying");
+			sc->state = Proxy;
+			c->state = Proxy;
+			return S_CONNECT;
+		}
+		dispatcher_spin_server_reader(sc);
+		flog("...Started Reading");
 	}
-
+	flog("...Started Proxying");
+	sc->state = Proxy;
+	c->state = Proxy;
 	return S_CONNECT;
 }
 
@@ -117,12 +138,6 @@ int server_send_request(Client_connection *c){
 		send_buflen += wret;
 	}
 	return S_SEND;
-}
-
-void * server_body(void *raw_struct){
-	flog("Server: body");
-	//TODO: stub
-	return NULL;
 }
 
 void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers){
@@ -187,5 +202,21 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 	return E_PARSE;
 }
 
-int server_read_n(Client_connection *c);
-int server_destroy_connection(Server_Connection *sc);
+int server_read_n(Client_connection *c){
+	// TODO: stub
+	return 0;
+}
+int server_destroy_connection(Server_Connection *sc){
+	if(sc == NULL){
+		return E_NULL;
+	}
+	//Cache_entry is handled by GC
+	free(sc);
+	return S_DESTROY;
+}
+
+void * server_body(void *raw_struct){
+	flog("Server: body");
+	//TODO: stub
+	return NULL;
+}

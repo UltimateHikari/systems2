@@ -188,9 +188,8 @@ void client_register(Client_connection *c){
 
 	if((c->entry = cache_find(c->cache, c->request)) == NULL){
 		/* spin_server sets c->state to reading or proxying
-			 depending on HTTP responce */
-		size_t bytes_expected = 0;
-		if(spin_server_connection(c, &bytes_expected) != S_CONNECT){
+			 depending on HTTP responce; also THERE entry is created */
+		if(spin_server_connection(c) != S_CONNECT){
 			free_on_error(c, "server connect failed");
 			return;
 		}

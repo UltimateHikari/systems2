@@ -68,3 +68,7 @@ void join_threads(){
 				"join", NO_CLEANUP);
 	}
 }
+
+int dispatcher_spin_server_reader(Server_Connection *sc){
+	//TODO: stub
+}

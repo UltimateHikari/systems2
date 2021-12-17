@@ -11,7 +11,7 @@ int cache_destroy(Cache * c);
 // returns entry on success 
 // or NULL if not found
 Cache_entry * cache_find(Cache *c, Request* mdata);
-Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, size_t mci);
+Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *mime, int mime_len);
 
 Chunk *chunk_init();
 int chunk_destroy(Chunk *c);

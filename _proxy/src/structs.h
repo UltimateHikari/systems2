@@ -6,6 +6,7 @@
 #define REQBUFSIZE 1024
 
 #define BE_INF 10*1024*1024
+#define MCI_ALIVE 1
 #define MCI_DEAD -1
 #define MCI_DONE 0
 
@@ -42,6 +43,7 @@ typedef struct Cache_entry{
 	size_t bytes_expected;
 	Request * mdata;
 	char * mime;
+	int mime_len;
 
 	/**
 	 * id of connection that is caching response now
