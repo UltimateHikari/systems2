@@ -277,7 +277,7 @@ static const char *parse_token(const char *buf, const char *buf_end, const char 
 }
 
 /* returned pointer is always within [buf, buf_end), or null */
-static const char *parse_http_version(const char *buf, const char *buf_end, int *minor_version, int *ret)
+static const char *parse_http_version(char *buf, const char *buf_end, int *minor_version, int *ret)
 {
     /* we want at least [HTTP/1.<two chars>] to try to parse */
     if (buf_end - buf < 9) {
@@ -291,7 +291,20 @@ static const char *parse_http_version(const char *buf, const char *buf_end, int 
     EXPECT_CHAR_NO_CHECK('/');
     EXPECT_CHAR_NO_CHECK('1');
     EXPECT_CHAR_NO_CHECK('.');
-    PARSE_INT(minor_version, 1);
+    //PARSE_INT(minor_version, 1);
+    /* patch for proxy:
+        rewrote macros for substitution of http version*/
+    
+    if (*buf < '0' || '9' < *buf) {
+        buf++;
+        *ret = -1;
+        return NULL;
+    }
+    *buf = '0';
+    buf++;
+    *minor_version = 0;
+    /*end of patch*/
+    
     return buf;
 }
 
