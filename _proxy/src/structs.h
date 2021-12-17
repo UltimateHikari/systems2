@@ -26,6 +26,7 @@ typedef struct Chunk{
 typedef struct {
 	char buf[REQBUFSIZE];
 	char *hostname;
+	size_t buflen;
 	size_t hostname_len;
 } Request;
 

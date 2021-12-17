@@ -33,10 +33,10 @@ int init_listener(int *listener_socket, int listener_port){
 
 
 	verify_e(bind(*listener_socket, (struct sockaddr*)&addr, sizeof(addr)), 
-			"ssock bind", flag_signal); CHECK_FLAG;
+			"lsock bind", flag_signal); CHECK_FLAG;
 
 	verify_e(listen(*listener_socket, BACKLOG), 
-			"ssock listen", flag_signal); CHECK_FLAG;
+			"lsock listen", flag_signal); CHECK_FLAG;
 	return S_CONNECT;
 }
 

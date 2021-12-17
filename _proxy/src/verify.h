@@ -14,6 +14,7 @@
 
 void flag_signal();
 int check_flag();
+void flog(const char* action);
 int verify(int rc, const char* action, void(*free_resources)());
 int verify_e(int rc, const char* action, void(*free_resources)());
 

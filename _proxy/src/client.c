@@ -20,13 +20,14 @@ int parse_into_request(Client_connection *c);
 void free_on_error(Client_connection *c, const char* error);
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers);
 void client_register(Client_connection *c);
-void client_read(Client_connection *c);
-void client_proxy(Client_connection *c);
+void client_read_n(Client_connection *c);
+void client_proxy_n(Client_connection *c);
 
 // definitions
 
 Request* make_request(){
 	Request * r = (Request*)malloc(sizeof(Request));
+	r->buflen = E_COMPARE;
 	r->hostname = NULL;
 	r->hostname_len = E_COMPARE;
 	return r;
@@ -69,7 +70,7 @@ int free_connection(Client_connection *c){
 }
 
 void free_on_error(Client_connection *c, const char* error){
-	fprintf(stderr, "Error: client connection: %s %d\n", error, c->socket);
+	fprintf(stderr, "Error: client connection: %s, fd:[%d]\n", error, c->socket);
 	free_request(c->request);
 	c->state = Done;
 }
@@ -89,6 +90,7 @@ void log_request(int pret, size_t method_len, const char* method, size_t path_le
 //TODO(opt) remove extra headers parsing
 //TODO fix tabs	
 int parse_into_request(Client_connection *c){
+	flog("Client: parse_into_request");
 	// brought mostly from example in github repo
 	if(c == NULL || c->request == NULL || c->socket == NO_SOCK){
 		return E_NULL;
@@ -106,6 +108,7 @@ int parse_into_request(Client_connection *c){
 			verify_e(rret = read(c->socket, buf + buflen, REQBUFSIZE - buflen), "read for parse", flag_signal);
 			prevbuflen = buflen;
 			buflen += rret;
+			c->request->buflen = buflen;
 
 			num_headers = sizeof(headers) / sizeof(headers[0]);
 			pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
@@ -133,30 +136,41 @@ int parse_into_request(Client_connection *c){
 
 //TODO error verification? or better in connection struct?
 void * client_body(void *raw_struct){
+	flog("Client: body");
 	// universal thread body
 	if(raw_struct == NULL){
 		pthread_exit(NULL);
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
-	switch(c->state){
-		case Parse:
-			client_register(c);
-			// no break, should try to read afterwards;
-		case Read:
-			client_read(c);
-			break;
-		case Proxy:
-			client_proxy(c);
-			break;
-		default:
-			// if smh scheduled as done
-			free_connection(c);
+	int freed = 0, labclass = c->labclass;
+
+	do{
+		switch(c->state){
+			case Parse:
+				client_register(c);
+				break;
+			case Read:
+				client_read_n(c);
+				break;
+			case Proxy:
+				client_proxy_n(c);
+				break;
+			default:
+				// if smh scheduled as done
+				free_connection(c);
+				freed = 1;
+		}
+	} while(!freed && labclass == MTCLASS);
+
+	if(labclass == WTCLASS){
+		//TODO: put ourselves into pending list;
 	}
 	pthread_exit(NULL);
 }
 
 void client_register(Client_connection *c){
+	flog("Client: register");
 	c->request = make_request();
 
 	if(parse_into_request(c) != S_PARSE){
@@ -167,7 +181,8 @@ void client_register(Client_connection *c){
 	if((c->entry = cache_find(c->cache, c->request)) == NULL){
 		/* spin_server sets c->state to reading or proxying
 			 depending on HTTP responce */
-		if(spin_server_connection(c) != S_CONNECT){
+		size_t bytes_expected = 0;
+		if(spin_server_connection(c, &bytes_expected) != S_CONNECT){
 			free_on_error(c, "server connect failed");
 			return;
 		}
@@ -177,8 +192,8 @@ void client_register(Client_connection *c){
 
 }
 
-void client_read(Client_connection *c){
-	//TODO: stub
+void client_read_n(Client_connection *c){
+	flog("Client: read_n");
 	// reads N chunks and returns
 	//get position to read
 	verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP);
@@ -223,6 +238,7 @@ void client_read(Client_connection *c){
 	}
 }
 
-void client_proxy(Client_connection *c){
+void client_proxy_n(Client_connection *c){
+	flog("Client: proxy_n");
 	//TODO: stub
 }

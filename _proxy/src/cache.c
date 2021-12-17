@@ -27,6 +27,7 @@ void cache_cleanup(){
 }
 
 int mdata_is_equal(Request * a, Request *b){
+	flog("Cache: mdata");
 	if(a == NULL || b == NULL || a->hostname == NULL || b->hostname == NULL || a->hostname_len == (size_t)E_COMPARE){
 		return E_COMPARE;
 	}
@@ -91,6 +92,7 @@ int chunk_destroy(Chunk *c){
 }
 
 int cache_garbage_check(Cache *c, size_t bytes_expected){
+	flog("Cache: check");
 	int res = S_CHECK;
 
 	size_t threshold = c->max_size_bytes * c->collect_threshold_percent / 100;
@@ -107,6 +109,7 @@ int cache_garbage_check(Cache *c, size_t bytes_expected){
 }
 
 Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect){
+	flog("Cache: GC");
 	Cache_entry *current = c->head;
 	Cache_entry *previous = NULL;
 	Cache_entry *marked_head = NULL;
@@ -183,6 +186,7 @@ int cache_destroy(Cache * c){
 // returns entry on success 
 // or NULL if not found
 Cache_entry * cache_find(Cache * c, Request* mdata){
+	flog("Cache: find");
 	RETURN_NULL_IF_NULL(c);
 	Cache_entry *current = c->head;
 
@@ -201,6 +205,7 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 }
 
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, size_t mci){
+	flog("Cache: put");
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mci);
 	Cache_entry *marked, *next;
 	bool is_nospace = false;

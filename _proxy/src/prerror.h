@@ -24,6 +24,9 @@
 
 #define E_COMPARE -1
 
+#define E_SEND -6
+#define S_SEND 1
+
 /**
  *
  * Control defines (mb migrate to params?)
