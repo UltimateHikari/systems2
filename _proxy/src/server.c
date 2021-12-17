@@ -5,11 +5,14 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
 #include "prerror.h"
 #include "verify.h"
 #include "server.h"
 #include "cache.h"
+#include "picohttpparser.h"
+
 
 #define CHECK_FLAG if(check_flag()){ return E_FLAG; }
 #define HTTP_PORT "80"
@@ -17,7 +20,7 @@
 
 //local stuff
 
-int server_parse_into_responce(Server_Connection * sc);
+int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len);
 int server_connect(Client_connection *cl);
 Server_Connection * server_init_connection(Client_connection * cl);
 
@@ -32,6 +35,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 		return NULL;
 	}
 	c->state = Parse;
+	c->buflen = E_COMPARE;
 	return c;
 }
 
@@ -87,10 +91,17 @@ int spin_server_connection(Client_connection *c, size_t *bytes_expected){
 		return E_SEND;
 	}
 
-	server_parse_into_responce(sc);
-	// then find out if read or proxy c->state should be
+	int status, response_bytes_expected = E_COMPARE, mime_len = E_COMPARE;
+	char *mime;
+	server_parse_into_response(sc, &status, &response_bytes_expected, &mime, &mime_len);
+
+	// TODO: then find out if read or proxy c->state should be
 	// and poke dispacher for registering if first
 	// proxying is as a whole on client
+
+	if(status == 200){
+		
+	}
 
 	return S_CONNECT;
 }
@@ -114,47 +125,66 @@ void * server_body(void *raw_struct){
 	return NULL;
 }
 
-int server_parse_into_responce(Server_Connection * sc){
-	flog("Server: parse_into_responce");
-	//TODO: stub// brought mostly from example in github repo
-	// if(c == NULL || c->request == NULL || c->socket == NO_SOCK){
-	// 	return E_NULL;
-	// }
-	// char *buf = c->request->buf;
-	// const char *path = c->request->hostname;
-	// size_t * path_len = &(c->request->hostname_len);
-	// const char *method;
-	// int pret, minor_version;
-	// struct phr_header headers[100];
-	// size_t buflen = 0, prevbuflen = 0, method_len, num_headers;
-	// ssize_t rret;
+void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers){
+	fprintf(stderr, "response is %d bytes long\n", pret);
+	fprintf(stderr, "msg is %d %.*s\n", status, (int)msg_len, msg);
+	fprintf(stderr, "HTTP version is 1.%d\n", minor_version);
+	fprintf(stderr, "headers:\n");
+	for (size_t i = 0; i != num_headers; ++i) {
+		fprintf(stderr, "%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+			(int)headers[i].value_len, headers[i].value);
+	}
+}
 
-	// while (1) {
-	// 		verify_e(rret = read(c->socket, buf + buflen, REQBUFSIZE - buflen), "read for parse", flag_signal);
-	// 		prevbuflen = buflen;
-	// 		buflen += rret;
+int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len){
+	flog("Server: parse_into_response");
 
-	// 		num_headers = sizeof(headers) / sizeof(headers[0]);
-	// 		pret = phr_parse_request(buf, buflen, &method, &method_len, &path, path_len,
-	// 				&minor_version, headers, &num_headers, prevbuflen);
-	// 		if (pret > 0)
-	// 				break; /* successfully parsed the request */
-	// 		else if (pret == -1)
-	// 				return E_PARSE;
-	// 		/* request is incomplete, continue the loop */
-	// 		/* also MT-safe */
-	// 		assert(pret == -2);
-	// 		if (buflen == REQBUFSIZE)
-	// 				return E_BIGREQ;
-	// }
+	char *buf = sc->buf;
+	const char *msg;
+	int pret, minor_version;
+	struct phr_header headers[100];
+	size_t buflen = 0, prevbuflen = 0, msg_len, num_headers;
+	ssize_t rret;
 
-	// if(strncmp(method, "GET", 3) != 0){
-	// 	// only GET allowed
-	// 	return E_WMETHOD;
-	// }
+	while (1) {
+			verify_e(rret = read(sc->socket, buf + buflen, REQBUFSIZE - buflen), "response read for parse", flag_signal);
+			prevbuflen = buflen;
+			buflen += rret;
 
-	// log_request(pret, method_len, method, *path_len, path, minor_version, num_headers, headers);
-	return 0;
+			num_headers = sizeof(headers) / sizeof(headers[0]);
+			pret = phr_parse_response(buf, buflen, &minor_version, status,
+				&msg, &msg_len, headers, &num_headers, prevbuflen);
+			if (pret > 0)
+					break; /* successfully parsed the request */
+			else if (pret == -1)
+					return E_PARSE;
+			/* request is incomplete, continue the loop */
+			/* also MT-safe */
+			assert(pret == -2);
+			if (buflen == REQBUFSIZE)
+					return E_BIGREQ;
+	}
+
+	log_response(pret, *status, msg, msg_len, minor_version, num_headers, headers);
+
+	for (size_t i = 0; i != num_headers; ++i) {
+		if(strncmp(headers[i].name, "Content-Length", 14) == 0){
+			fprintf(stderr, "Found length: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			*bytes_expected = atoi(headers[i].value);
+		}
+	}
+
+	for (size_t i = 0; i != num_headers; ++i) {
+		if(strncmp(headers[i].name, "Content-Type", 12) == 0){
+			fprintf(stderr, "Found mime: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			*mime = (char*)malloc(headers[i].value_len);
+			strncpy(*mime, headers[i].value, headers[i].value_len);
+			*mime_len = headers[i].value_len;
+			return S_PARSE;
+		}
+	}
+
+	return E_PARSE;
 }
 
 int server_read_n(Client_connection *c);

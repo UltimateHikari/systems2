@@ -89,6 +89,8 @@ typedef struct{
 	int socket;
 	Cache_entry *entry;
 	int state;
+	char buf[REQBUFSIZE];
+	size_t buflen;
 } Server_Connection;
 
 typedef struct{

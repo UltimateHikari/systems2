@@ -23,6 +23,7 @@
 
 #define E_FLAG -19 //exiting by flag
 
+// for invalid lengths
 #define E_COMPARE -1
 
 #define E_SEND -6

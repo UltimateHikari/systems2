@@ -81,7 +81,7 @@ void log_request(int pret, size_t method_len, const char* method, size_t path_le
 	for (size_t i = 0; i != num_headers; ++i) {
 		fprintf(stderr, "%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
-}
+	}
 }
 
 //TODO(opt) remove extra headers parsing
@@ -125,6 +125,8 @@ int parse_into_request(Client_connection *c){
 		// only GET allowed
 		return E_WMETHOD;
 	}
+
+	//TODO bump down HTTP version to 1.0 with patch to pico
 
 	log_request(pret, method_len, method, path_len, path, minor_version, num_headers, headers);
 
