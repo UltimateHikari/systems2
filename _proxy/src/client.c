@@ -73,13 +73,13 @@ void free_on_error(Client_connection *c, const char* error){
 }
 
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers){
-	printf("request is %d bytes long\n", pret);
-	printf("method is %.*s\n", (int)method_len, method);
-	printf("path is %.*s\n", (int)path_len, path);
-	printf("HTTP version is 1.%d\n", minor_version);
-	printf("headers:\n");
+	fprintf(stderr, "request is %d bytes long\n", pret);
+	fprintf(stderr, "method is %.*s\n", (int)method_len, method);
+	fprintf(stderr, "path is %.*s\n", (int)path_len, path);
+	fprintf(stderr, "HTTP version is 1.%d\n", minor_version);
+	fprintf(stderr, "headers:\n");
 	for (size_t i = 0; i != num_headers; ++i) {
-		printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+		fprintf(stderr, "%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
 }
 }
@@ -93,8 +93,8 @@ int parse_into_request(Client_connection *c){
 		return E_NULL;
 	}
 	char *buf = c->request->buf;
-	const char **path = &(c->request->hostname);
-	size_t * path_len = &(c->request->hostname_len);
+	const char *path;
+	size_t path_len;
 	const char *method;
 	int pret, minor_version;
 	struct phr_header headers[100];
@@ -108,7 +108,7 @@ int parse_into_request(Client_connection *c){
 			c->request->buflen = buflen;
 
 			num_headers = sizeof(headers) / sizeof(headers[0]);
-			pret = phr_parse_request(buf, buflen, &method, &method_len, path, path_len,
+			pret = phr_parse_request(buf, buflen, &method, &method_len, &path, &path_len,
 					&minor_version, headers, &num_headers, prevbuflen);
 			if (pret > 0)
 					break; /* successfully parsed the request */
@@ -126,9 +126,18 @@ int parse_into_request(Client_connection *c){
 		return E_WMETHOD;
 	}
 
-	log_request(pret, method_len, method, *path_len, *path, minor_version, num_headers, headers);
+	log_request(pret, method_len, method, path_len, path, minor_version, num_headers, headers);
 
-	return S_PARSE;
+	for (size_t i = 0; i != num_headers; ++i) {
+		if(strncmp(headers[i].name, "Host", 4) == 0){
+			fprintf(stderr, "Found host: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			c->request->hostname = (char*)malloc(headers[i].value_len);
+			strncpy(c->request->hostname, headers[i].value, headers[i].value_len);
+			c->request->hostname_len = headers[i].value_len;
+			return S_PARSE;
+		}
+	}
+	return E_PARSE;
 }
 
 //TODO error verification? or better in connection struct?
@@ -140,7 +149,7 @@ void * client_body(void *raw_struct){
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
-	int freed = 0, labclass = c->labclass;
+	int freed = 0, labclass = /*c->labclass*/ WTCLASS;
 
 	do{
 		switch(c->state){

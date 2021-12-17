@@ -38,7 +38,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 int server_connect(Client_connection *cl){
 	flog("Server: connect");
 	Server_Connection *c= cl->c;
-	int sd;
+	int sd, gret;
 	struct addrinfo hints = {
 		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM
@@ -48,11 +48,12 @@ int server_connect(Client_connection *cl){
 
 
 	char *tmp_hostname = (char*)malloc(cl->request->hostname_len);
-	strncpy(cl->request->hostname, tmp_hostname, cl->request->hostname_len);
-	fprintf(stderr, "Resolving %s...\n", tmp_hostname);
+	strncpy(tmp_hostname, cl->request->hostname, cl->request->hostname_len);
+	fprintf(stderr, "Resolving %s ...\n", tmp_hostname);
 
-	if(verify_e(getaddrinfo(
-		tmp_hostname, port_str, &hints, &addrs), "resolving", NO_CLEANUP) < 0){
+	if((gret = getaddrinfo(
+		tmp_hostname, port_str, &hints, &addrs)) != 0){
+		fprintf(stderr, "%s\n", gai_strerror(gret));
 		free(tmp_hostname);
 		return E_RESOLVE;
 	}

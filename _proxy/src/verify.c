@@ -21,6 +21,8 @@ void flog_e(const char* s1, const char* s2){
 		pthread_self(), s1, s2);
 }
 
+//TODO add chain of freers, as list and mutex for addition?
+
 int verify(int rc, const char* action, void(*free_resources)()){
 	char err_buf[BUFLEN];
 	//printf("verifying %s\n", action); //debug for monitor
