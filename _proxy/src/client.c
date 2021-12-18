@@ -209,6 +209,8 @@ void client_read_n(Client_connection *c){
 	flog("Client: read_n");
 	// reads N chunks and returns
 	//get position to read
+	// TODO refactor to more constant reader registrarion; mb as function in cache
+
 	verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP);
 		size_t bytes_ready = c->entry->bytes_ready;
 		c->entry->readers_amount++;

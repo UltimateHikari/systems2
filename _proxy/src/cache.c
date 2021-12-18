@@ -138,7 +138,7 @@ int cache_garbage_check(Cache *c, size_t bytes_expected){
 
 	size_t threshold = c->max_size_bytes * c->collect_threshold_percent / 100;
 	size_t expected = c->current_expected_bytes + bytes_expected;
-	fprintf(stderr, "%d, %d\n", threshold, expected);
+	//fprintf(stderr, "%d, %d\n", threshold, expected);
 	if(threshold < expected){
 		c->marked = cache_garbage_collect(c, expected - threshold);
 		if(threshold < c->current_expected_bytes + bytes_expected){
