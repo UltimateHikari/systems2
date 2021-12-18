@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "prerror.h"
@@ -8,6 +9,7 @@
 #include "dispatcher.h"
 #include "cache.h"
 #include "client.h"
+#include "server.h"
 
 
 #define MAX_THREADS 100
@@ -18,6 +20,8 @@
 
 pthread_t threads[MAX_THREADS];
 int num_threads = 0;
+
+int dispatcher_spin_client_reader(Client_connection *sc);
 
 
 int init_listener(int *listener_socket, int listener_port){
@@ -53,10 +57,10 @@ int spin_listener(int listener_socket){
 		Client_connection *cc = init_connection(MTCLASS, cache);
 		cc->socket = verify_e(accept(listener_socket, NO_ADDR, NO_ADDR),
 				"ssock accept", flag_signal); CHECK_FLAG;
-		verify(pthread_create(
-				threads + num_threads, NULL, client_body, (void *)cc),
-				"create", flag_signal); CHECK_FLAG;
-		num_threads++;
+		if(dispatcher_spin_client_reader(cc) != S_DISPATCH){
+			close(listener_socket);
+			return E_CONNECT;
+		}
 	}
 
 	return S_CONNECT;
@@ -70,6 +74,29 @@ void join_threads(){
 }
 
 int dispatcher_spin_server_reader(Server_Connection *sc){
-	//TODO: stub
-	return 0;
+	int labclass = sc->labclass;
+	if(labclass == MTCLASS){
+		verify(pthread_create(
+				threads + num_threads, NULL, server_body, (void *)sc),
+				"create", flag_signal); CHECK_FLAG;
+		num_threads++;
+	}
+	if(labclass == WTCLASS){
+		// TODO: put into queue & signal for dispatcher cond variable
+	}
+	return S_DISPATCH;
+}
+
+int dispatcher_spin_client_reader(Client_connection *cc){
+	int labclass = cc->labclass;
+	if(labclass == MTCLASS){
+		verify(pthread_create(
+				threads + num_threads, NULL, client_body, (void *)cc),
+				"create", flag_signal); CHECK_FLAG;
+		num_threads++;
+	}
+	if(labclass == WTCLASS){
+		// TODO: put into queue & signal for dispatcher cond variable
+	}
+	return S_DISPATCH;
 }

@@ -22,6 +22,8 @@ void log_request(int pret, size_t method_len, const char* method, size_t path_le
 void client_register(Client_connection *c);
 void client_read_n(Client_connection *c);
 int client_proxy_n(Client_connection *c);
+int proxy_read(Client_connection *c);
+int proxy_write(Client_connection *c);
 
 // definitions
 
@@ -58,11 +60,11 @@ int free_connection(Client_connection *c){
 	if(c == NULL){
 		return E_DESTROY;
 	}
-	free_request(c->request);
 	if(c->socket != NO_SOCK){
 		close(c->socket);
 	}
 	// entry and request belongs to cache
+	// TODO if not placed entry into cache
 	free(c);
 	return S_DESTROY;
 }
@@ -150,7 +152,7 @@ void * client_body(void *raw_struct){
 	flog("Client: body");
 	// universal thread body
 	if(raw_struct == NULL){
-		pthread_exit(NULL);
+		return NULL;
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
@@ -178,7 +180,7 @@ void * client_body(void *raw_struct){
 	if(labclass == WTCLASS){
 		//TODO: put ourselves into pending list;
 	}
-	pthread_exit(NULL);
+	return NULL; // implicit pthread_exit(NULL) if thread body
 }
 
 void client_register(Client_connection *c){

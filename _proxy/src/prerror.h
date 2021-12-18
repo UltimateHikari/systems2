@@ -29,6 +29,14 @@
 #define E_SEND -6
 #define S_SEND 1
 
+#define E_READ -7
+#define S_READ 1
+
+#define S_DISPATCH 1
+#define E_DISPATCH -1
+
+#define S_COMMIT 1;
+
 /**
  *
  * Control defines (mb migrate to params?)
@@ -40,8 +48,8 @@
 
 // Cache init:
 #define CHUNK_SIZE_BYTES 4096
-#define MAX_SIZE_BYTES 10*4096*1024
-#define DEFAULT_THRESHOLD 75
+#define MAX_SIZE_BYTES 100*4096*1024
+#define DEFAULT_THRESHOLD 80
 
 // Client read:
 #define CHUNKS_TO_READ 10

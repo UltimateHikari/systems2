@@ -6,7 +6,7 @@
 // func for starting server from client
 int spin_server_connection(Client_connection *c);
 
-int server_read_n(Client_connection *c);
+int server_read_n(Server_Connection *sc);
 void * server_body(void * raw_struct);
 
 int server_destroy_connection(Server_Connection *sc);

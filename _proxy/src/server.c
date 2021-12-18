@@ -32,6 +32,8 @@ Server_Connection * server_init_connection(Client_connection * cl){
 	flog("Server: init");
 	Server_Connection *c = (Server_Connection*)malloc(sizeof(Server_Connection));
 	cl->c = c;
+
+	c->socket = NO_SOCK;
 	c->entry = cl->entry;
 	if(server_connect(cl) < 0){
 		free(c);
@@ -39,6 +41,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 		return NULL;
 	}
 	c->state = Parse;
+	c->labclass = cl->labclass;
 	c->buflen = E_COMPARE;
 	return c;
 }
@@ -203,13 +206,60 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 	return E_PARSE;
 }
 
-int server_read_n(Client_connection *c){
-	// TODO: stub
-	return 0;
+void free_on_server_error(Server_Connection *sc, const char* error){
+	// TODO free server_connection if proxying?
+	fprintf(stderr, "Error: server connection: %s, fd:[%d]\n", error, sc->socket);
+	centry_pop(sc->entry); //remove unwritten chunk for sake of next connections
+	sc->state = Done;
 }
+
+int server_read_n(Server_Connection *sc){
+	flog("Server: read_n");
+	if(sc->entry == NULL){
+		return E_READ;
+	}
+
+	Chunk * chunk;
+	char * buf = NULL; // by default not putting buf into chunk
+	size_t buflen = 0;
+
+	if(sc->buflen > 0){
+		// need to cache request from buf to cache;
+		flog("Server: read_n - putting request");
+		buflen = sc->buflen;
+		buf = sc->buf;
+	}
+
+	flog("Server: read_n - trying chunk put");
+	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
+		return E_READ;
+	}
+
+	for(int i = 0; (i < CHUNKS_TO_READ); i++){
+		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
+			return E_READ;
+		}
+		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP);;
+
+		if(wret < 0){
+			free_on_server_error(sc, "reading read");
+			return E_SEND;
+		}
+		chunk->size = (size_t)wret;
+		if(wret == 0){
+			flog("reading read: EOF reached");
+			sc->state = Done;
+		}
+	}
+	return S_READ;
+}
+
 int server_destroy_connection(Server_Connection *sc){
 	if(sc == NULL){
 		return E_NULL;
+	}
+	if(sc->socket != NO_SOCK){
+		close(sc->socket);
 	}
 	//Cache_entry is handled by GC
 	free(sc);
@@ -218,6 +268,35 @@ int server_destroy_connection(Server_Connection *sc){
 
 void * server_body(void *raw_struct){
 	flog("Server: body");
-	//TODO: stub
+	
+	if(raw_struct == NULL){
+		return NULL;
+	}
+	Server_Connection *sc = (Server_Connection *)raw_struct;
+
+	int freed = 0, labclass = sc->labclass;
+	do{
+		switch(sc->state){
+			case Read:
+				if(server_read_n(sc) != S_READ){
+					flog("Server: body freeing on error");
+					sc->state = Done;
+					server_destroy_connection(sc);
+					freed = 1;
+				}
+				break;
+			default:
+				flog("Server: body freeing");
+				sc->state = Done;
+				server_destroy_connection(sc);
+				freed = 1;
+				break;
+		}
+		
+	}while(!freed && labclass == MTCLASS);
+
+	if(labclass == WTCLASS){
+		// put in pending
+	}
 	return NULL;
 }

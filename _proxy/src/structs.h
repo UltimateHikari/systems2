@@ -19,7 +19,7 @@
 
 typedef struct Chunk{
 	size_t size;
-	char * data;
+	char data[REQBUFSIZE];
 
 	struct Chunk *next;
 } Chunk;
@@ -61,6 +61,7 @@ typedef struct Cache_entry{
 	size_t readers_amount;
 
 	Chunk *head;
+	Chunk *last;
 	struct Cache_entry *next;
 } Cache_entry;
 
@@ -91,6 +92,7 @@ typedef struct{
 	int socket;
 	Cache_entry *entry;
 	int state;
+	int labclass;
 	char buf[REQBUFSIZE];
 	size_t buflen;
 } Server_Connection;

@@ -52,6 +52,7 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int
 	res->master_connection_id = MCI_ALIVE;
 	res->readers_amount = 1;
 	res->head = NULL;
+	res->head = NULL;
 	res->next = NULL;
 
 	verify(pthread_mutex_init(&(res->lag_lock), NULL), "l_lock init", cache_cleanup);
@@ -82,16 +83,47 @@ int centry_destroy(Cache_entry * c){
 	return S_DESTROY;
 }
 
-Chunk *chunk_init(){
-	//TODO: stub
+// can just append empty chunk
+Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
+	Chunk *chunk = (Chunk *)malloc(sizeof(Chunk));
+	chunk->size = 0;
+	chunk->next = NULL;
+
+	if(c->head == NULL){
+		c->head = chunk;
+		c->last = chunk;
+	}else{
+		c->last->next = chunk;
+		c->last = chunk;
+	}
+	// TODO: if c->bytes_ready + buflen > bytes_excepted -> error or going to proxy mode;
+	if(buf != NULL){
+		// for puttring request;
+		strncpy(chunk->data, buf, buflen);
+		chunk->size = buflen;
+		centry_commit_read(c, buflen);
+	}
+	return chunk;
+}
+
+Chunk * centry_pop(Cache_entry *c){
+ // TODO: stub pop uncommitted chunk;
 	return NULL;
 }
+
+int centry_commit_read(Cache_entry *c, size_t buflen){
+	verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP);
+	c->bytes_ready += buflen;
+	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP);
+	return S_COMMIT;
+}
+
+
 
 int chunk_destroy(Chunk *c){
 	if(c == NULL){
 		return E_DESTROY;
 	}
-	free(c->data);
 	free(c);
 	return S_DESTROY;
 }

@@ -15,6 +15,9 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 
 Chunk *chunk_init();
 int chunk_destroy(Chunk *c);
+Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen);
+Chunk * centry_pop(Cache_entry *c); // pop uncommitted chunk;
+int centry_commit_read(Cache_entry *c, size_t buflen);
 
 
 #endif
