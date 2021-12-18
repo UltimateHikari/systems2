@@ -123,6 +123,7 @@ int spin_server_connection(Client_connection *c){
 		}
 		dispatcher_spin_server_reader(sc);
 		flog("...Started Reading");
+		return S_CONNECT;
 	}
 	flog("...Started Proxying");
 	sc->state = Proxy;

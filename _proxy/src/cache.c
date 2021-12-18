@@ -15,6 +15,7 @@ size_t curtime();
 Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int mime_len);
 int centry_destroy(Cache_entry * c);
 
+Cache *cache_free_marked(Cache *c);
 int cache_garbage_check(Cache *c, size_t bytes_expected);
 Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect);
 bool is_eligible_to_collect(Cache_entry *c);
@@ -61,6 +62,7 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int
 }
 
 int centry_destroy(Cache_entry * c){
+	flog("Centry_destroy");
 	if(c == NULL){
 		return E_DESTROY;
 	}
@@ -107,7 +109,9 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 }
 
 Chunk * centry_pop(Cache_entry *c){
- // TODO: stub pop uncommitted chunk;
+ 	/* pop uncommitted chunk
+ 	expected to be used rarely, so sub-optimal*/;
+ 	RETURN_NULL_IF_NULL(c);
 	return NULL;
 }
 
@@ -134,6 +138,7 @@ int cache_garbage_check(Cache *c, size_t bytes_expected){
 
 	size_t threshold = c->max_size_bytes * c->collect_threshold_percent / 100;
 	size_t expected = c->current_expected_bytes + bytes_expected;
+	fprintf(stderr, "%d, %d\n", threshold, expected);
 	if(threshold < expected){
 		c->marked = cache_garbage_collect(c, expected - threshold);
 		if(threshold < c->current_expected_bytes + bytes_expected){
@@ -244,7 +249,6 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *mime, int mime_len){
 	flog("Cache: put");
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mime, mime_len);
-	Cache_entry *marked, *next;
 	bool is_nospace = false;
 
 	verify(pthread_mutex_lock(&(c->structural_lock)), "adding entry", NO_CLEANUP);
@@ -258,14 +262,10 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 			c->last->next = newentry;
 			c->last = newentry;
 		}
-		c->current_expected_bytes = c->current_expected_bytes + bytes_expected;
+		c->current_expected_bytes += bytes_expected;
 	verify(pthread_mutex_unlock(&(c->structural_lock)), "adding entry", NO_CLEANUP);
 
-	while(marked != NULL){
-		next = marked-> next;
-		centry_destroy(marked);
-		marked = next;
-	}
+	cache_free_marked(c);
 
 	if(is_nospace){
 		centry_destroy(newentry);
@@ -273,4 +273,14 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 	}
 
 	return newentry;
+}
+
+Cache *cache_free_marked(Cache *c){
+	Cache_entry *marked = c->marked;
+	while(c->marked != NULL){
+		centry_destroy(marked);
+		marked = marked->next;
+	}
+	c->marked = NULL;
+	return c;
 }
