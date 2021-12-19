@@ -6,6 +6,7 @@
 #include "verify.h"
 #include "prerror.h"
 #include "cache.h"
+#include "logger.h"
 
 // Translation unit-local funcs
 void cache_cleanup();
@@ -28,17 +29,11 @@ void cache_cleanup(){
 }
 
 int mdata_is_equal(Request * a, Request *b){
-	flog("Cache: mdata");
+	LOG_DEBUG("mdata_is_equal-call");
 	if(a == NULL || b == NULL || a->hostname == NULL || b->hostname == NULL || a->hostname_len == (size_t)E_COMPARE){
 		return E_COMPARE;
 	}
 	return (strncmp(a->hostname, b->hostname, a->hostname_len) == 0);
-}
-
-size_t curtime(){
-	struct timespec init;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &init);
-	return init.tv_sec;
 }
 
 Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int mime_len){
@@ -62,7 +57,7 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int
 }
 
 int centry_destroy(Cache_entry * c){
-	flog("Centry_destroy");
+	LOG_DEBUG("centry_destroy-call");
 	if(c == NULL){
 		return E_DESTROY;
 	}
@@ -133,12 +128,11 @@ int chunk_destroy(Chunk *c){
 }
 
 int cache_garbage_check(Cache *c, size_t bytes_expected){
-	flog("Cache: check");
+	LOG_DEBUG("cache_garbage_check-call");
 	int res = S_CHECK;
 
 	size_t threshold = c->max_size_bytes * c->collect_threshold_percent / 100;
 	size_t expected = c->current_expected_bytes + bytes_expected;
-	//fprintf(stderr, "%d, %d\n", threshold, expected);
 	if(threshold < expected){
 		c->marked = cache_garbage_collect(c, expected - threshold);
 		if(threshold < c->current_expected_bytes + bytes_expected){
@@ -151,7 +145,7 @@ int cache_garbage_check(Cache *c, size_t bytes_expected){
 }
 
 Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect){
-	flog("Cache: GC");
+	LOG_DEBUG("cache_garbage_collect-call");
 	Cache_entry *current = c->head;
 	Cache_entry *previous = NULL;
 	Cache_entry *marked_head = NULL;
@@ -228,7 +222,7 @@ int cache_destroy(Cache * c){
 // returns entry on success 
 // or NULL if not found
 Cache_entry * cache_find(Cache * c, Request* mdata){
-	flog("Cache: find");
+	LOG_DEBUG("cache_find-call");
 	RETURN_NULL_IF_NULL(c);
 	Cache_entry *current = c->head;
 
@@ -247,7 +241,7 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 }
 
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *mime, int mime_len){
-	flog("Cache: put");
+	LOG_DEBUG("cache_put-call");
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mime, mime_len);
 	bool is_nospace = false;
 

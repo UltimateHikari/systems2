@@ -10,6 +10,7 @@
 #include "server.h"
 #include "cache.h"
 #include "picohttpparser.h"
+#include "logger.h"
 
 #define UNREGISTER_FROM_READERS verify(pthread_mutex_lock(&(c->entry->lag_lock)), "lock for unreg", NO_CLEANUP); \
 		c->entry->readers_amount--; \
@@ -71,28 +72,27 @@ int free_connection(Client_connection *c){
 
 void free_on_error(Client_connection *c, const char* error){
 	// TODO free server_connection if proxying?
-	fprintf(stderr, "Error: client connection: %s, fd:[%d]\n", error, c->socket);
+	LOG_ERROR("%s, fd:[%d]\n", error, c->socket);
 	free_request(c->request);
 	c->request = NULL;
 	c->state = Done;
 }
 
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers){
-	fprintf(stderr, "request is %d bytes long\n", pret);
-	fprintf(stderr, "method is %.*s\n", (int)method_len, method);
-	fprintf(stderr, "path is %.*s\n", (int)path_len, path);
-	fprintf(stderr, "HTTP version is 1.%d\n", minor_version);
-	fprintf(stderr, "headers:\n");
+	LOG_INFO("request is %d bytes long\n", pret);
+	LOG_INFO("method is %.*s\n", (int)method_len, method);
+	LOG_INFO("path is %.*s\n", (int)path_len, path);
+	LOG_INFO("HTTP version is 1.%d\n", minor_version);
+	LOG_INFO("headers:\n");
 	for (size_t i = 0; i != num_headers; ++i) {
-		fprintf(stderr, "%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+		LOG_INFO("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
 	}
 }
 
 //TODO(opt) remove extra headers parsing
-//TODO fix tabs	
 int parse_into_request(Client_connection *c){
-	flog("Client: parse_into_request");
+	LOG_DEBUG("parse_into_request-call");
 	// brought mostly from example in github repo
 	if(c == NULL || c->request == NULL || c->socket == NO_SOCK){
 		return E_NULL;
@@ -137,7 +137,7 @@ int parse_into_request(Client_connection *c){
 
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Host", 4) == 0){
-			fprintf(stderr, "Found host: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			LOG_DEBUG("Found host: %.*s\n", (int)headers[i].value_len, headers[i].value);
 			c->request->hostname = (char*)malloc(headers[i].value_len);
 			strncpy(c->request->hostname, headers[i].value, headers[i].value_len);
 			c->request->hostname_len = headers[i].value_len;
@@ -149,7 +149,7 @@ int parse_into_request(Client_connection *c){
 
 //TODO error verification? or better in connection struct?
 void * client_body(void *raw_struct){
-	flog("Client: body");
+	LOG_DEBUG("client_body-call");
 	// universal thread body
 	if(raw_struct == NULL){
 		return NULL;
@@ -171,7 +171,7 @@ void * client_body(void *raw_struct){
 				break;
 			default:
 				// if smh scheduled as done
-				flog("Client: body freeing");
+				LOG_INFO("freeing connection");
 				free_connection(c);
 				freed = 1;
 		}
@@ -184,7 +184,7 @@ void * client_body(void *raw_struct){
 }
 
 void client_register(Client_connection *c){
-	flog("Client: register");
+	LOG_DEBUG("client_register-call");
 	c->request = make_request();
 
 	if(parse_into_request(c) != S_PARSE){
@@ -206,7 +206,7 @@ void client_register(Client_connection *c){
 }
 
 void client_read_n(Client_connection *c){
-	flog("Client: read_n");
+	LOG_DEBUG("read_n-call");
 	// reads N chunks and returns
 	//get position to read
 	// TODO refactor to more constant reader registrarion; mb as function in cache
@@ -257,7 +257,7 @@ void client_read_n(Client_connection *c){
 }
 
 int client_proxy_n(Client_connection *c){
-	flog("Client: proxy_n");
+	LOG_DEBUG("proxy_n-call");
 	Server_Connection *sc = c->c;
 
 	if(sc->buflen > 0){
@@ -281,18 +281,18 @@ int client_proxy_n(Client_connection *c){
 }
 
 int proxy_read(Client_connection *c){
-	flog("Client: proxy_read");
+	LOG_DEBUG("proxy_read-call");
 	Server_Connection *sc = c->c;
 
 	int wret = verify_e(read(sc->socket, sc->buf, REQBUFSIZE), "proxying read", NO_CLEANUP);;
 
 	if(wret < 0){
-		free_on_error(c, "proxying read");
+		LOG_ERROR("proxy_read error");
 		return E_SEND;
 	}
 	sc->buflen = (size_t)wret;
 	if(wret == 0){
-		flog("proxying read: EOF reached");
+		LOG_INFO("proxying connection: EOF reached");
 		c->state = Done;
 		return S_SEND;
 	}
@@ -300,7 +300,7 @@ int proxy_read(Client_connection *c){
 }
 
 int proxy_write(Client_connection *c){
-	flog("Client: proxy_write");
+	LOG_DEBUG("proxy_write-call");
 	Server_Connection *sc = c->c;
 
 	if(sc->buflen == 0){
@@ -313,7 +313,7 @@ int proxy_write(Client_connection *c){
 		bytes_written += wret;
 	}
 	if(wret < 0){
-		free_on_error(c, "proxying write error");
+		LOG_ERROR("proxy_write error");
 		return E_SEND;
 	}
 	return S_SEND;

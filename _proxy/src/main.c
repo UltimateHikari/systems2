@@ -5,6 +5,7 @@
 #include <signal.h>
 #include "dispatcher.h"
 #include "verify.h"
+#include "logger.h"
 #define ARGS_MIN 2
 #define PORT_MAX 65535
 #define USAGE "Usage: local port, 1024 - %d\n", PORT_MAX
@@ -13,7 +14,7 @@
 int init_args(int argc, char** argv){
 	int port;
 	if(argc < ARGS_MIN || (port = atoi(argv[1])) < 1024 || port > PORT_MAX){
-		printf(USAGE);
+		LOG_INFO(USAGE);
 		pthread_exit(NULL);
 	}
 	return port;
@@ -31,10 +32,12 @@ void init_signal(){
 
 int main(int argc, char** argv){
 	int listener_sc;
-	//printf("%d,%d,%d", POLLERR, POLLHUP, POLLIN);
-
 	int listener_port = init_args(argc, argv);
 	init_signal();
+
+	logger_initConsoleLogger(stderr);
+	logger_setLevel(LogLevel_DEBUG);
+
 	if(init_listener(&listener_sc, listener_port)){
 		spin_listener(listener_sc);
 	}

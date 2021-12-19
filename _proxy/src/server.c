@@ -13,6 +13,7 @@
 #include "cache.h"
 #include "dispatcher.h"
 #include "picohttpparser.h"
+#include "logger.h"
 
 
 #define CHECK_FLAG if(check_flag()){ return E_FLAG; }
@@ -29,7 +30,7 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 
 
 Server_Connection * server_init_connection(Client_connection * cl){
-	flog("Server: init");
+	LOG_DEBUG("server_init_connection-call");
 	Server_Connection *c = (Server_Connection*)malloc(sizeof(Server_Connection));
 	cl->c = c;
 
@@ -47,7 +48,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 }
 
 int server_connect(Client_connection *cl){
-	flog("Server: connect");
+	LOG_DEBUG("server_connect-call");
 	Server_Connection *c= cl->c;
 	int sd, gret;
 	struct addrinfo hints = {
@@ -60,11 +61,11 @@ int server_connect(Client_connection *cl){
 
 	char *tmp_hostname = (char*)malloc(cl->request->hostname_len);
 	strncpy(tmp_hostname, cl->request->hostname, cl->request->hostname_len);
-	fprintf(stderr, "Resolving %s ...\n", tmp_hostname);
+	LOG_INFO("Resolving %s ...\n", tmp_hostname);
 
 	if((gret = getaddrinfo(
 		tmp_hostname, port_str, &hints, &addrs)) != 0){
-		fprintf(stderr, "%s\n", gai_strerror(gret));
+		LOG_INFO("%s\n", gai_strerror(gret));
 		free(tmp_hostname);
 		return E_RESOLVE;
 	}
@@ -72,7 +73,7 @@ int server_connect(Client_connection *cl){
 
 	for(addr = addrs; addr != NULL; addr = addr->ai_next){
 		sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", flag_signal); CHECK_FLAG;
-		fprintf(stderr, "Connecting to %s...\n", addr->ai_addr->sa_data);
+		LOG_INFO("Connecting to %s...\n", addr->ai_addr->sa_data);
 		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP) == 0)
 				break; //succesfully connected;
 
@@ -83,12 +84,12 @@ int server_connect(Client_connection *cl){
 		return E_CONNECT;
 	}
 	c->socket = sd;
-	fprintf(stderr, "[%d]: connected to %.*s\n", sd, (int)cl->request->hostname_len, cl->request->hostname);
+	LOG_INFO("[%d]: connected to %.*s\n", sd, (int)cl->request->hostname_len, cl->request->hostname);
 	return S_CONNECT;
 }
 
 int spin_server_connection(Client_connection *c){
-	flog("Server: spin");
+	LOG_DEBUG("spin_server_connection-call");
 	Server_Connection *sc = server_init_connection(c);
 	if(sc == NULL){
 		return E_CONNECT;
@@ -108,7 +109,7 @@ int spin_server_connection(Client_connection *c){
 
 	if(status == 200){
 		// put in cache
-		flog("Trying Reading...");
+		LOG_DEBUG("Trying Reading...");
 		sc->state = Read;
 		c->state = Read;
 		if(response_bytes_expected == E_COMPARE){
@@ -116,23 +117,23 @@ int spin_server_connection(Client_connection *c){
 			response_bytes_expected = BE_INF;
 		}
 		if(cache_put(c->cache, response_bytes_expected, c->request, mime, mime_len) == NULL){
-			flog("...Started Proxying");
+			LOG_DEBUG("...Started Proxying");
 			sc->state = Proxy;
 			c->state = Proxy;
 			return S_CONNECT;
 		}
 		dispatcher_spin_server_reader(sc);
-		flog("...Started Reading");
+		LOG_DEBUG("...Started Reading");
 		return S_CONNECT;
 	}
-	flog("...Started Proxying");
+	LOG_DEBUG("...Started Proxying");
 	sc->state = Proxy;
 	c->state = Proxy;
 	return S_CONNECT;
 }
 
 int server_send_request(Client_connection *c){
-	flog("Server: send_request");
+	LOG_DEBUG("send_request-call");
 	ssize_t wret;
 	Server_Connection *sc = c->c;
 	char *buf = c->request->buf;
@@ -145,18 +146,18 @@ int server_send_request(Client_connection *c){
 }
 
 void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers){
-	fprintf(stderr, "response is %d bytes long\n", pret);
-	fprintf(stderr, "msg is %d %.*s\n", status, (int)msg_len, msg);
-	fprintf(stderr, "HTTP version is 1.%d\n", minor_version);
-	fprintf(stderr, "headers:\n");
+	LOG_INFO("response is %d bytes long\n", pret);
+	LOG_INFO("msg is %d %.*s\n", status, (int)msg_len, msg);
+	LOG_INFO("HTTP version is 1.%d\n", minor_version);
+	LOG_INFO("headers:\n");
 	for (size_t i = 0; i != num_headers; ++i) {
-		fprintf(stderr, "%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+		LOG_INFO("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
 	}
 }
 
 int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len){
-	flog("Server: parse_into_response");
+	LOG_DEBUG("parse_into_response-call");
 
 	char *buf = sc->buf;
 	const char *msg;
@@ -189,14 +190,14 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Content-Length", 14) == 0){
-			fprintf(stderr, "Found length: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			LOG_INFO("Found length: %.*s\n", (int)headers[i].value_len, headers[i].value);
 			*bytes_expected = atoi(headers[i].value);
 		}
 	}
 
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Content-Type", 12) == 0){
-			fprintf(stderr, "Found mime: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			LOG_INFO("Found mime: %.*s\n", (int)headers[i].value_len, headers[i].value);
 			*mime = (char*)malloc(headers[i].value_len);
 			strncpy(*mime, headers[i].value, headers[i].value_len);
 			*mime_len = headers[i].value_len;
@@ -209,13 +210,13 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 
 void free_on_server_error(Server_Connection *sc, const char* error){
 	// TODO free server_connection if proxying?
-	fprintf(stderr, "Error: server connection: %s, fd:[%d]\n", error, sc->socket);
+	LOG_ERROR("%s, fd:[%d]\n", error, sc->socket);
 	centry_pop(sc->entry); //remove unwritten chunk for sake of next connections
 	sc->state = Done;
 }
 
 int server_read_n(Server_Connection *sc){
-	flog("Server: read_n");
+	LOG_DEBUG("read_n-call");
 	if(sc->entry == NULL){
 		return E_READ;
 	}
@@ -226,12 +227,12 @@ int server_read_n(Server_Connection *sc){
 
 	if(sc->buflen > 0){
 		// need to cache request from buf to cache;
-		flog("Server: read_n - putting request");
+		LOG_DEBUG("read_n - putting request");
 		buflen = sc->buflen;
 		buf = sc->buf;
 	}
 
-	flog("Server: read_n - trying chunk put");
+	LOG_DEBUG("read_n - trying chunk put");
 	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
 		return E_READ;
 	}
@@ -248,7 +249,7 @@ int server_read_n(Server_Connection *sc){
 		}
 		chunk->size = (size_t)wret;
 		if(wret == 0){
-			flog("reading read: EOF reached");
+			LOG_INFO("reading read: EOF reached");
 			sc->state = Done;
 		}
 	}
@@ -256,6 +257,7 @@ int server_read_n(Server_Connection *sc){
 }
 
 int server_destroy_connection(Server_Connection *sc){
+	LOG_DEBUG("server_destroy_connection-call");
 	if(sc == NULL){
 		return E_NULL;
 	}
@@ -268,7 +270,7 @@ int server_destroy_connection(Server_Connection *sc){
 }
 
 void * server_body(void *raw_struct){
-	flog("Server: body");
+	LOG_DEBUG("server_body-call");
 	
 	if(raw_struct == NULL){
 		return NULL;
@@ -280,14 +282,14 @@ void * server_body(void *raw_struct){
 		switch(sc->state){
 			case Read:
 				if(server_read_n(sc) != S_READ){
-					flog("Server: body freeing on error");
+					LOG_ERROR("body freeing on error");
 					sc->state = Done;
 					server_destroy_connection(sc);
 					freed = 1;
 				}
 				break;
 			default:
-				flog("Server: body freeing");
+				LOG_INFO("freeing connection");
 				sc->state = Done;
 				server_destroy_connection(sc);
 				freed = 1;

@@ -10,6 +10,7 @@
 #include "cache.h"
 #include "client.h"
 #include "server.h"
+#include "logger.h"
 
 
 #define MAX_THREADS 100
@@ -45,13 +46,13 @@ int init_listener(int *listener_socket, int listener_port){
 }
 
 int spin_listener(int listener_socket){
-	printf("Spinning cache...\n");
+	LOG_INFO("Spinning cache...");
 	Cache *cache = cache_init();
 	if(cache == NULL){
-		printf("cannot init cache, exiting\n");
+		LOG_ERROR("cannot init cache, exiting");
 		pthread_exit(NULL);
 	}
-	printf("Spinning server...\n");
+	LOG_INFO("Spinning server...");
 
 	while(!check_flag() && num_threads < MAX_THREADS){
 		Client_connection *cc = init_connection(MTCLASS, cache);

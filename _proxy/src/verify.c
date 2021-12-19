@@ -1,4 +1,5 @@
 #include "verify.h"
+#include "logger.h"
 #define BUFLEN 128
 
 int exit_flag = 0;
@@ -11,16 +12,6 @@ int check_flag(){
 	return exit_flag == 1;
 }
 
-void flog(const char* action){
-	fprintf(stderr, "[%ld]: %s\n",
-		pthread_self(), action);
-}
-
-void flog_e(const char* s1, const char* s2){
-	fprintf(stderr, "[%ld] Error: %s - %s\n",
-		pthread_self(), s1, s2);
-}
-
 //TODO add chain of freers, as list and mutex for addition?
 
 int verify(int rc, const char* action, void(*free_resources)()){
@@ -28,7 +19,7 @@ int verify(int rc, const char* action, void(*free_resources)()){
 	//printf("verifying %s\n", action); //debug for monitor
 	strerror_r(rc, err_buf, BUFLEN);
 	if(rc != 0){
-		flog_e(action, err_buf);
+		LOG_ERROR("%s - %s", action, err_buf);
 		if(free_resources != NO_CLEANUP) {free_resources();}
 		//pthread_exit(NULL);
 	}
