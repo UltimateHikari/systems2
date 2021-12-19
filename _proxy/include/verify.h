@@ -10,11 +10,13 @@
 #define NO_CLEANUP NULL
 
 #define RETURN_NULL_IF_NULL(a) if(a == NULL){ return NULL; }
+#define PRETURN_NULL_IF_NULL(a) if(a == NULL){ pthread_exit(NULL); }
 
 
-void flag_signal();
+void panic_signal();
 int check_flag();
-int verify(int rc, const char* action, void(*free_resources)());
-int verify_e(int rc, const char* action, void(*free_resources)());
+void check_panic(void*(*free_resources)(void *), void *arg);
+int verify(int rc, const char* action, void*(*free_resources)(void * ), void *arg);
+int verify_e(int rc, const char* action, void*(*free_resources)(void * ), void *arg);
 
 #endif

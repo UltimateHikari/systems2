@@ -35,7 +35,8 @@
 #define S_DISPATCH 1
 #define E_DISPATCH -1
 
-#define S_COMMIT 1;
+#define E_COMMIT -1
+#define S_COMMIT 1
 
 /**
  *

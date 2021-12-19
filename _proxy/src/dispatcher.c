@@ -12,24 +12,66 @@
 #include "server.h"
 #include "logger.h"
 
-
-#define MAX_THREADS 100
 #define DEFAULT_PROTOCOL 0
 #define NO_ADDR NULL
 
-#define CHECK_FLAG if(check_flag()){ return E_FLAG; }
-
-pthread_t threads[MAX_THREADS];
-int num_threads = 0;
-
 int dispatcher_spin_client_reader(Client_connection *sc);
+int dispatcher_destroy(Dispatcher *dispatcher);
 
+void* listener_cleanup(void *raw_listener){
+	// dispatcher and existing connections can continue to listen
+	LOG_INFO("listener_cleanup");
+	PRETURN_NULL_IF_NULL(raw_listener);
+	Listener ** listener = (Listener**)raw_listener;
+	PRETURN_NULL_IF_NULL(*listener);
+	if((*listener)->socket != NO_SOCK){
+		close((*listener)->socket);
+	}
+	free(listener);
+	*listener = NULL;
+	pthread_exit(NULL); 
+}
 
-int init_listener(int *listener_socket, int listener_port){
+void* dispatcher_cleanup(void * raw_dispatcher){
+	LOG_INFO("dispatcher_cleanup");
+	panic_signal();
+	PRETURN_NULL_IF_NULL(raw_dispatcher);
+	Dispatcher ** dispatcher = (Dispatcher**)raw_dispatcher;
+	PRETURN_NULL_IF_NULL(*dispatcher);
+	dispatcher_destroy(*dispatcher);
+	*dispatcher = NULL;
+	pthread_exit(NULL); 
+}
+
+Dispatcher *init_dispatcher(Cache *cache){
+	Dispatcher *dispatcher = (Dispatcher*)malloc(sizeof(Dispatcher));
+	RETURN_NULL_IF_NULL(dispatcher);
+	dispatcher->cache = cache;
+	dispatcher->isListenerAlive = 1;
+	dispatcher->clhead = NULL;
+	dispatcher->schead = NULL;
+	return dispatcher;
+}
+
+int dispatcher_destroy(Dispatcher *dispatcher){
+	if(dispatcher == NULL){
+		return E_DESTROY;
+	}
+	cache_destroy(dispatcher->cache);
+	free(dispatcher);
+	return S_DESTROY;
+}
+
+Listener* init_listener(int listener_port){
 	struct sockaddr_in addr;
 
-	*listener_socket = verify_e(socket(AF_INET, SOCK_STREAM, DEFAULT_PROTOCOL),
-			"ssock open", flag_signal); CHECK_FLAG;
+	Listener *listener = (Listener*)malloc(sizeof(Listener));
+	RETURN_NULL_IF_NULL(listener);
+	listener->socket = NO_SOCK;
+
+	void* arg = (void*)&listener;
+	listener->socket = verify_e(socket(AF_INET, SOCK_STREAM, DEFAULT_PROTOCOL),
+			"ssock open", listener_cleanup, arg);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -37,50 +79,62 @@ int init_listener(int *listener_socket, int listener_port){
 	addr.sin_addr.s_addr = INADDR_ANY; //all interfaces
 
 
-	verify_e(bind(*listener_socket, (struct sockaddr*)&addr, sizeof(addr)), 
-			"lsock bind", flag_signal); CHECK_FLAG;
+	verify_e(bind(listener->socket, (struct sockaddr*)&addr, sizeof(addr)), 
+			"lsock bind", listener_cleanup, arg);
 
-	verify_e(listen(*listener_socket, BACKLOG), 
-			"lsock listen", flag_signal); CHECK_FLAG;
-	return S_CONNECT;
+	verify_e(listen(listener->socket, BACKLOG), 
+			"lsock listen", listener_cleanup, arg);
+	return listener;
 }
 
-int spin_listener(int listener_socket){
+int spin_listener(Listener *listener){
 	LOG_INFO("Spinning cache...");
 	Cache *cache = cache_init();
 	if(cache == NULL){
 		LOG_ERROR("cannot init cache, exiting");
 		pthread_exit(NULL);
 	}
-	LOG_INFO("Spinning server...");
 
-	while(!check_flag() && num_threads < MAX_THREADS){
-		Client_connection *cc = init_connection(MTCLASS, cache);
-		cc->socket = verify_e(accept(listener_socket, NO_ADDR, NO_ADDR),
-				"ssock accept", flag_signal); CHECK_FLAG;
-		if(dispatcher_spin_client_reader(cc) != S_DISPATCH){
-			close(listener_socket);
-			return E_CONNECT;
-		}
+	LOG_INFO("Spinning server...");
+	Dispatcher *dispatcher = init_dispatcher(cache);
+	if(dispatcher == NULL){
+		LOG_ERROR("cannot init dispatcher, exiting");
+		cache_destroy(cache);
+		pthread_exit(NULL);
 	}
 
+	void* arg = (void*)&listener;
+	while(1){
+		check_panic(listener_cleanup, arg);
+		Client_connection *cc = init_connection(MTCLASS, dispatcher);
+		cc->socket = verify_e(accept(listener->socket, NO_ADDR, NO_ADDR),
+				"ssock accept", listener_cleanup, arg);
+		if(dispatcher_spin_client_reader(cc) != S_DISPATCH){
+			listener_cleanup(arg);
+		}
+	}
 	return S_CONNECT;
 }
 
-void join_threads(){
-	for(int i = 0; i < num_threads; i++){
-		verify(pthread_join(threads[i], NULL),
-				"join", NO_CLEANUP);
+void join_threads(Dispatcher *d){
+	for(int i = 0; i < d->num_threads; i++){
+		verify(pthread_join(d->threads[i], NULL),
+				"join", NO_CLEANUP, NULL);
 	}
 }
 
 int dispatcher_spin_server_reader(Server_Connection *sc){
 	int labclass = sc->labclass;
+	Dispatcher *d = (Dispatcher *)sc->d;
+	void* arg = (void*)&d;
 	if(labclass == MTCLASS){
+		if(d->num_threads >= MAX_THREADS){
+			return E_DISPATCH;
+		}
 		verify(pthread_create(
-				threads + num_threads, NULL, server_body, (void *)sc),
-				"create", flag_signal); CHECK_FLAG;
-		num_threads++;
+				d->threads + d->num_threads, NULL, server_body, (void *)sc),
+				"create server", dispatcher_cleanup, arg);
+		d->num_threads++;
 	}
 	if(labclass == WTCLASS){
 		// TODO: put into queue & signal for dispatcher cond variable
@@ -90,11 +144,16 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 
 int dispatcher_spin_client_reader(Client_connection *cc){
 	int labclass = cc->labclass;
+	Dispatcher *d = (Dispatcher *)cc->d;
+	void* arg = (void*)&d;
 	if(labclass == MTCLASS){
+		if(d->num_threads >= MAX_THREADS){
+			return E_DISPATCH;
+		}
 		verify(pthread_create(
-				threads + num_threads, NULL, client_body, (void *)cc),
-				"create", flag_signal); CHECK_FLAG;
-		num_threads++;
+				d->threads + d->num_threads, NULL, client_body, (void *)cc),
+				"create client", dispatcher_cleanup, arg);
+		d->num_threads++;
 	}
 	if(labclass == WTCLASS){
 		// TODO: put into queue & signal for dispatcher cond variable

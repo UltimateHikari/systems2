@@ -9,7 +9,7 @@
 #include "logger.h"
 
 // Translation unit-local funcs
-void cache_cleanup();
+void *cache_cleanup(void *raw_cache);
 int mdata_is_equal(Request * a, Request *b);
 size_t curtime();
 
@@ -21,12 +21,32 @@ int cache_garbage_check(Cache *c, size_t bytes_expected);
 Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect);
 bool is_eligible_to_collect(Cache_entry *c);
 
+// cleanup
+
+void *cache_cleanup(void *raw_cache){
+	LOG_INFO("cache_cleanup");
+	panic_signal(); // cache failure is panic material
+	RETURN_NULL_IF_NULL(raw_cache);
+	Cache ** cache = (Cache **)raw_cache;
+	RETURN_NULL_IF_NULL(*cache);
+
+	cache_destroy(*cache);
+	*cache = NULL;
+	pthread_exit(NULL);
+}
+
+void *centry_cleanup(void *raw_centry){
+	LOG_INFO("centry_cleanup");
+	RETURN_NULL_IF_NULL(raw_centry);
+	Cache_entry** centry = (Cache_entry**)raw_centry;
+	RETURN_NULL_IF_NULL(*centry);
+	centry_destroy(*centry);
+	*centry = NULL;
+	return NULL;
+}
+
 // Local  implementations
 
-void cache_cleanup(){
-	// not pthread_exit because of init in main thread
-	exit(-1);
-}
 
 int mdata_is_equal(Request * a, Request *b){
 	LOG_DEBUG("mdata_is_equal-call");
@@ -51,8 +71,9 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int
 	res->head = NULL;
 	res->next = NULL;
 
-	verify(pthread_mutex_init(&(res->lag_lock), NULL), "l_lock init", cache_cleanup);
-	verify(pthread_cond_init(&(res->lag_cond), NULL),  "l_cond init", cache_cleanup);
+	void* arg = ((void*)&res);
+	verify(pthread_mutex_init(&(res->lag_lock), NULL), "l_lock init", centry_cleanup, arg);
+	verify(pthread_cond_init(&(res->lag_cond), NULL),  "l_cond init", cache_cleanup, arg);
 	return res;
 }
 
@@ -73,8 +94,8 @@ int centry_destroy(Cache_entry * c){
 		chunk_destroy(current);
 		current = next;
 	}
-	verify(pthread_mutex_destroy(&(c->lag_lock)), "l_lock destroy", cache_cleanup);
-	verify(pthread_cond_destroy(&(c->lag_cond)),  "c_lock destroy", cache_cleanup);
+	pthread_mutex_destroy(&(c->lag_lock));
+	pthread_cond_destroy(&(c->lag_cond));
 	free(c);
 
 	return S_DESTROY;
@@ -98,7 +119,10 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 		// for puttring request;
 		strncpy(chunk->data, buf, buflen);
 		chunk->size = buflen;
-		centry_commit_read(c, buflen);
+		if(centry_commit_read(c, buflen) == E_COMMIT){
+			chunk_destroy(chunk);
+			chunk = NULL;
+		}
 	}
 	return chunk;
 }
@@ -111,9 +135,12 @@ Chunk * centry_pop(Cache_entry *c){
 }
 
 int centry_commit_read(Cache_entry *c, size_t buflen){
-	verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP);
+	LOG_DEBUG("centry_commit");
+	if(verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP, NULL) < 0){ 
+		return E_COMMIT; 
+	};
 	c->bytes_ready += buflen;
-	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP);
+	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP, NULL);
 	return S_COMMIT;
 }
 
@@ -197,7 +224,8 @@ Cache * cache_init(){
 	res->last = NULL;
 	res->marked = NULL;
 
-	verify(pthread_mutex_init(&(res->structural_lock), NULL), "s_lock init", cache_cleanup);
+	void* arg = (void*)&res;
+	verify(pthread_mutex_init(&(res->structural_lock), NULL), "s_lock init", cache_cleanup, arg);
 	return res;
 }
 
@@ -213,10 +241,10 @@ int cache_destroy(Cache * c){
 		centry_destroy(current);
 		current = next;
 	}
-	verify(pthread_mutex_destroy(&(c->structural_lock)), "s_lock destroy", cache_cleanup);
+	pthread_mutex_destroy(&(c->structural_lock));
 	free(c);
 
-	return 0;
+	return S_DESTROY;
 }
 
 // returns entry on success 
@@ -226,17 +254,18 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 	RETURN_NULL_IF_NULL(c);
 	Cache_entry *current = c->head;
 
-	verify(pthread_mutex_lock(&(c->structural_lock)), "find starting iter", NO_CLEANUP);
+	void*arg = (void*)&c;
+	if(verify(pthread_mutex_lock(&(c->structural_lock)), "find starting iter", cache_cleanup, arg) < 0){return NULL;};
 		// TODO critical section can be reduced with snapshotting?
 		// or collector should be kept out from ruining snapshot?
 		while(current !=  NULL){
 			if(mdata_is_equal(mdata, current->mdata)){
-				verify(pthread_mutex_unlock(&(c->structural_lock)), "found ending iter", NO_CLEANUP);
+				verify(pthread_mutex_unlock(&(c->structural_lock)), "found ending iter", cache_cleanup, (void*)c);
 				return current;
 			}
 			current = current->next;
 		}
-	verify(pthread_mutex_unlock(&(c->structural_lock)), "not found ending iter", NO_CLEANUP);
+	if(verify(pthread_mutex_unlock(&(c->structural_lock)), "not found ending iter", cache_cleanup, arg) < 0){return NULL;};
 	return NULL;
 }
 
@@ -245,7 +274,8 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mime, mime_len);
 	bool is_nospace = false;
 
-	verify(pthread_mutex_lock(&(c->structural_lock)), "adding entry", NO_CLEANUP);
+	void*arg = (void*)&c;
+	if(verify(pthread_mutex_lock(&(c->structural_lock)), "adding entry", cache_cleanup, arg) < 0){return NULL;};
 		if(cache_garbage_check(c, bytes_expected) == E_NOSPACE){
 			is_nospace = true;
 		}
@@ -257,7 +287,7 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 			c->last = newentry;
 		}
 		c->current_expected_bytes += bytes_expected;
-	verify(pthread_mutex_unlock(&(c->structural_lock)), "adding entry", NO_CLEANUP);
+	if(verify(pthread_mutex_unlock(&(c->structural_lock)), "adding entry", cache_cleanup, arg) < 0){return NULL;};
 
 	cache_free_marked(c);
 

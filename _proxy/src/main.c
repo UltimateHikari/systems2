@@ -21,7 +21,7 @@ int init_args(int argc, char** argv){
 }
 
 void quit_handler(int unused){
-	flag_signal();
+	panic_signal();
 }
 
 void init_signal(){
@@ -31,18 +31,16 @@ void init_signal(){
 }
 
 int main(int argc, char** argv){
-	int listener_sc;
+	Listener *listener;
 	int listener_port = init_args(argc, argv);
 	init_signal();
 
 	logger_initConsoleLogger(stderr);
 	logger_setLevel(LogLevel_DEBUG);
 
-	if(init_listener(&listener_sc, listener_port)){
-		spin_listener(listener_sc);
+	if((listener = init_listener(listener_port)) != NULL){
+		spin_listener(listener);
 	}
-	flag_signal();
-	join_threads();
-	close(listener_sc);
+	// only exit is by cleanup_listener inside;
 	pthread_exit(NULL);
 }

@@ -15,11 +15,7 @@
 #include "picohttpparser.h"
 #include "logger.h"
 
-
-#define CHECK_FLAG if(check_flag()){ return E_FLAG; }
 #define HTTP_PORT "80"
-
-
 //local stuff
 
 Server_Connection * server_init_connection(Client_connection * cl);
@@ -27,6 +23,7 @@ int server_connect(Client_connection *cl);
 int server_send_request(Client_connection *c);
 void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers);
 int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len);
+int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, int mime_len, Client_connection *c);
 
 
 Server_Connection * server_init_connection(Client_connection * cl){
@@ -44,6 +41,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 	c->state = Parse;
 	c->labclass = cl->labclass;
 	c->buflen = E_COMPARE;
+	c->d = cl->d;
 	return c;
 }
 
@@ -72,9 +70,12 @@ int server_connect(Client_connection *cl){
 	free(tmp_hostname);
 
 	for(addr = addrs; addr != NULL; addr = addr->ai_next){
-		sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", flag_signal); CHECK_FLAG;
+		sd = verify_e(socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol), "trying socket", NO_CLEANUP, NULL);
+		if(sd < 0){
+			return E_CONNECT;
+		}
 		LOG_INFO("Connecting to %s...\n", addr->ai_addr->sa_data);
-		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP) == 0)
+		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP, NULL) == 0)
 				break; //succesfully connected;
 
 		close(sd);
@@ -103,10 +104,11 @@ int spin_server_connection(Client_connection *c){
 	char *mime;
 	server_parse_into_response(sc, &status, &response_bytes_expected, &mime, &mime_len);
 
-	// TODO: then find out if read or proxy c->state should be
-	// and poke dispacher for registering if read
-	// proxying is as a whole on client
+	return choose_read_or_proxy(status, response_bytes_expected, mime, mime_len, c);
+}
 
+int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, int mime_len, Client_connection *c){
+	Server_Connection *sc = c->c;
 	if(status == 200){
 		// put in cache
 		LOG_DEBUG("Trying Reading...");
@@ -122,7 +124,9 @@ int spin_server_connection(Client_connection *c){
 			c->state = Proxy;
 			return S_CONNECT;
 		}
-		dispatcher_spin_server_reader(sc);
+		if(dispatcher_spin_server_reader(sc) != S_DISPATCH){
+			return E_CONNECT;
+		}
 		LOG_DEBUG("...Started Reading");
 		return S_CONNECT;
 	}
@@ -139,7 +143,7 @@ int server_send_request(Client_connection *c){
 	char *buf = c->request->buf;
 	size_t send_buflen = 0, req_buflen = c->request->buflen;
 	while(send_buflen < req_buflen){
-		verify_e(wret = write(sc->socket, buf + send_buflen, req_buflen - send_buflen), "write req", flag_signal); CHECK_FLAG;
+		if(verify_e(wret = write(sc->socket, buf + send_buflen, req_buflen - send_buflen), "write req", NO_CLEANUP, NULL) < 0){return E_SEND;};
 		send_buflen += wret;
 	}
 	return S_SEND;
@@ -167,7 +171,7 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 	ssize_t rret;
 
 	while (1) {
-			verify_e(rret = read(sc->socket, buf + buflen, REQBUFSIZE - buflen), "response read for parse", flag_signal);
+			if(verify_e(rret = read(sc->socket, buf + buflen, REQBUFSIZE - buflen), "response read for parse", NO_CLEANUP, NULL) < 0){return E_PARSE;};
 			prevbuflen = buflen;
 			buflen += rret;
 			sc->buflen = buflen;
@@ -241,10 +245,9 @@ int server_read_n(Server_Connection *sc){
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
 			return E_READ;
 		}
-		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP);;
+		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
 
 		if(wret < 0){
-			free_on_server_error(sc, "reading read");
 			return E_SEND;
 		}
 		chunk->size = (size_t)wret;

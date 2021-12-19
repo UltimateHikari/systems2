@@ -9,6 +9,7 @@
 #define MCI_ALIVE 1
 #define MCI_DEAD -1
 #define MCI_DONE 0
+#define MAX_THREADS 100
 
 /**
  * CacheEntries forming linked list
@@ -95,6 +96,7 @@ typedef struct{
 	int labclass;
 	char buf[REQBUFSIZE];
 	size_t buflen;
+	void *d;
 } Server_Connection;
 
 typedef struct{
@@ -106,6 +108,20 @@ typedef struct{
 	int labclass;
 	size_t bytes_read;
 	Server_Connection *c;
+	void *d;
 } Client_connection;
+
+typedef struct{
+	int socket;
+} Listener;
+
+typedef struct{
+	int isListenerAlive;
+	Cache *cache;
+	int num_threads;
+	pthread_t threads[MAX_THREADS];
+	Client_connection * clhead;
+	Server_Connection * schead;
+} Dispatcher;
 
 #endif

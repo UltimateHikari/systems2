@@ -12,19 +12,37 @@
 #include "picohttpparser.h"
 #include "logger.h"
 
-#define UNREGISTER_FROM_READERS verify(pthread_mutex_lock(&(c->entry->lag_lock)), "lock for unreg", NO_CLEANUP); \
+#define UNREGISTER_FROM_READERS if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), \
+		"lock for unreg", NO_CLEANUP, NULL) < 0){return E_SEND;}; \
 		c->entry->readers_amount--; \
-		verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP);
+		verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP, NULL);
+
+#define FREE_CONNECTION LOG_INFO("freeing connection"); \
+				free_connection(c);						\
+				freed = 1;
 
 // local declarations
 int parse_into_request(Client_connection *c);
-void free_on_error(Client_connection *c, const char* error);
+void free_as_request_owner(Client_connection *c, const char* error);
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers);
-void client_register(Client_connection *c);
-void client_read_n(Client_connection *c);
+int client_register(Client_connection *c);
+int client_read_n(Client_connection *c);
 int client_proxy_n(Client_connection *c);
 int proxy_read(Client_connection *c);
 int proxy_write(Client_connection *c);
+
+//cleanup
+
+void * client_cleanup(void *raw_client){
+	LOG_INFO("client_cleanup");
+	RETURN_NULL_IF_NULL(raw_client);
+	Client_connection ** client = (Client_connection**)raw_client;
+	RETURN_NULL_IF_NULL((client));
+	free_connection(*client);
+	*client = NULL;
+	return NULL;
+	// no pthread_exit because workers
+}
 
 // definitions
 
@@ -44,16 +62,17 @@ int free_request(Request *r){
 	return S_DESTROY;
 }
 
-Client_connection *init_connection(int class, Cache *cache){
+Client_connection *init_connection(int class, Dispatcher *d){
 	Client_connection *c = (Client_connection*)malloc(sizeof(Client_connection));
 	c->socket = NO_SOCK;
-	c->cache = cache;
+	c->cache = d->cache;
 	c->entry = NULL;
 	c->request = NULL;
 	c->state = Parse;
 	c->labclass = class;
 	c->bytes_read = 0;
 	c->c = NULL;
+	c->d = (void*)d;
 	return c;
 }
 
@@ -64,15 +83,16 @@ int free_connection(Client_connection *c){
 	if(c->socket != NO_SOCK){
 		close(c->socket);
 	}
+	if(c->c != NULL && c->c->state == Proxy){
+		server_destroy_connection(c->c);
+	}
 	// entry and request belongs to cache
-	// TODO if not placed entry into cache
 	free(c);
 	return S_DESTROY;
 }
 
-void free_on_error(Client_connection *c, const char* error){
-	// TODO free server_connection if proxying?
-	LOG_ERROR("%s, fd:[%d]\n", error, c->socket);
+void free_as_request_owner(Client_connection *c, const char* error){
+	LOG_ERROR("Freeing as request owner:%s, fd:[%d]\n", error, c->socket);
 	free_request(c->request);
 	c->request = NULL;
 	c->state = Done;
@@ -107,7 +127,7 @@ int parse_into_request(Client_connection *c){
 	ssize_t rret;
 
 	while (1) {
-			verify_e(rret = read(c->socket, buf + buflen, REQBUFSIZE - buflen), "read for parse", flag_signal);
+			if(verify_e(rret = read(c->socket, buf + buflen, REQBUFSIZE - buflen), "read for parse", NO_CLEANUP, NULL) < 0){return E_PARSE;};
 			prevbuflen = buflen;
 			buflen += rret;
 			c->request->buflen = buflen;
@@ -131,8 +151,6 @@ int parse_into_request(Client_connection *c){
 		return E_WMETHOD;
 	}
 
-	//TODO bump down HTTP version to 1.0 with patch to pico
-
 	log_request(pret, method_len, method, path_len, path, minor_version, num_headers, headers);
 
 	for (size_t i = 0; i != num_headers; ++i) {
@@ -147,7 +165,6 @@ int parse_into_request(Client_connection *c){
 	return E_PARSE;
 }
 
-//TODO error verification? or better in connection struct?
 void * client_body(void *raw_struct){
 	LOG_DEBUG("client_body-call");
 	// universal thread body
@@ -161,19 +178,23 @@ void * client_body(void *raw_struct){
 	do{
 		switch(c->state){
 			case Parse:
-				client_register(c);
+				if(client_register(c) != S_SEND){
+					FREE_CONNECTION;
+				}
 				break;
 			case Read:
-				client_read_n(c);
+				if(client_read_n(c) != S_SEND){
+					FREE_CONNECTION;
+				}
 				break;
 			case Proxy:
-				client_proxy_n(c);
+				if(client_proxy_n(c) != S_SEND){
+					FREE_CONNECTION;
+				}
 				break;
 			default:
 				// if smh scheduled as done
-				LOG_INFO("freeing connection");
-				free_connection(c);
-				freed = 1;
+				FREE_CONNECTION;
 		}
 	} while(!freed && labclass == MTCLASS);
 
@@ -183,46 +204,48 @@ void * client_body(void *raw_struct){
 	return NULL; // implicit pthread_exit(NULL) if thread body
 }
 
-void client_register(Client_connection *c){
+int client_register(Client_connection *c){
 	LOG_DEBUG("client_register-call");
 	c->request = make_request();
 
 	if(parse_into_request(c) != S_PARSE){
-		free_on_error(c, "parse failed");
-		return;
+		free_as_request_owner(c, "parse failed");
+		return E_SEND;
 	}
 
 	if((c->entry = cache_find(c->cache, c->request)) == NULL){
 		/* spin_server sets c->state to reading or proxying
 			 depending on HTTP responce; also THERE entry is created */
 		if(spin_server_connection(c) != S_CONNECT){
-			free_on_error(c, "server connect failed");
-			return;
+			free_as_request_owner(c, "server connect failed");
+			return E_SEND;
 		}
 	} else {
 		c->state = Read;
 	}
 
+	return S_SEND;
 }
 
-void client_read_n(Client_connection *c){
+int client_read_n(Client_connection *c){
 	LOG_DEBUG("read_n-call");
 	// reads N chunks and returns
 	//get position to read
 	// TODO refactor to more constant reader registrarion; mb as function in cache
 
-	verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP);
+	if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP, NULL) < 0){return E_SEND;};
 		size_t bytes_ready = c->entry->bytes_ready;
 		c->entry->readers_amount++;
-	verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP);
+	if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP, NULL) < 0){return E_SEND;};
 	//skip to reading chunk
 	size_t bytes_handled = 0;
 	Chunk * current = c->entry->head;
 	while(bytes_handled < c->bytes_read){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
-			free_on_error(c, "chunks have less than bytes_ready");
-			return;
+			LOG_ERROR("chunks have less than bytes_ready");
+			c->state = Done;
+			return E_SEND;
 		}
 		bytes_handled += current->size;
 		current = current->next;
@@ -230,8 +253,9 @@ void client_read_n(Client_connection *c){
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
-			free_on_error(c, "chunks have less than bytes_ready");
-			return;
+			LOG_ERROR("chunks have less than bytes_ready");
+			c->state = Done;
+			return E_SEND;
 		}
 		size_t bytes_written = 0;
 		int wret;
@@ -241,19 +265,13 @@ void client_read_n(Client_connection *c){
 		c->bytes_read += bytes_written;
 		if(wret < 0 || bytes_written < current->size){
 			UNREGISTER_FROM_READERS;
-			free_on_error(c, "write error");
-			return;
+			LOG_ERROR("write error");
+			c->state = Done;
+			return E_SEND;
 		}
 		current = current-> next;
 	}
-
-	if(c->labclass == WTCLASS){
-		UNREGISTER_FROM_READERS;
-		return;
-	}
-	if(c->labclass == MTCLASS){
-		// TODO: hol'up on cond var in centry
-	}
+	return S_SEND;
 }
 
 int client_proxy_n(Client_connection *c){
@@ -284,7 +302,7 @@ int proxy_read(Client_connection *c){
 	LOG_DEBUG("proxy_read-call");
 	Server_Connection *sc = c->c;
 
-	int wret = verify_e(read(sc->socket, sc->buf, REQBUFSIZE), "proxying read", NO_CLEANUP);;
+	int wret = verify_e(read(sc->socket, sc->buf, REQBUFSIZE), "proxying read", NO_CLEANUP, NULL);
 
 	if(wret < 0){
 		LOG_ERROR("proxy_read error");
