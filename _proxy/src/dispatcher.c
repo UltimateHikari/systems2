@@ -27,7 +27,7 @@ void* listener_cleanup(void *raw_listener){
 	if((*listener)->socket != NO_SOCK){
 		close((*listener)->socket);
 	}
-	free(listener);
+	free(*listener);
 	*listener = NULL;
 	pthread_exit(NULL); 
 }
@@ -109,6 +109,7 @@ int spin_listener(Listener *listener){
 		Client_connection *cc = init_connection(MTCLASS, dispatcher);
 		cc->socket = verify_e(accept(listener->socket, NO_ADDR, NO_ADDR),
 				"ssock accept", listener_cleanup, arg);
+		LOG_INFO("accepted %d", cc->socket);
 		if(dispatcher_spin_client_reader(cc) != S_DISPATCH){
 			listener_cleanup(arg);
 		}

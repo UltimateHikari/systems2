@@ -19,8 +19,10 @@ void try_call(void*(*free_resources)(void *), void *arg){
 }
 
 void check_panic(void*(*free_resources)(void *), void *arg){
-	try_call(free_resources, arg);
-	pthread_exit(NULL);
+	if(exit_flag != 0){
+		try_call(free_resources, arg);
+		pthread_exit(NULL);
+	}
 }
 
 int verify_neq(int rc){
@@ -28,7 +30,7 @@ int verify_neq(int rc){
 }
 
 int verify_less(int rc){
-	return (rc < 0);
+	return (errno < 0);
 }
 
 int verify_common(int rc, const char* action, void*(*free_resources)(void *), void *arg, int(*condition)(int)){
@@ -48,5 +50,5 @@ int verify(int rc, const char* action, void*(*free_resources)(void *), void *arg
 
 //_e means errno 
 int verify_e(int rc, const char* action, void*(*free_resources)(void *), void *arg){
-	return verify_common(errno, action, free_resources, arg, verify_less);
+	return verify_common(rc, action, free_resources, arg, verify_less);
 }
