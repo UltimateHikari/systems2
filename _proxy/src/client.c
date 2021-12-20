@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <time.h>
 
 #include "client.h"
 #include "prerror.h"
@@ -12,10 +13,11 @@
 #include "picohttpparser.h"
 #include "logger.h"
 
-#define UNREGISTER_FROM_READERS if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), \
-		"lock for unreg", NO_CLEANUP, NULL) < 0){return E_SEND;}; \
-		c->entry->readers_amount--; \
-		verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP, NULL);
+#define UNREGISTER_FROM_READERS if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 	\
+		"lock for unreg", NO_CLEANUP, NULL) < 0){return E_SEND;}; 						\
+		c->entry->readers_amount--; 													\
+		verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								\
+		"unlock for unreg", NO_CLEANUP, NULL);
 
 #define FREE_CONNECTION LOG_INFO("freeing connection"); \
 				free_connection(c);						\
@@ -99,13 +101,13 @@ void free_as_request_owner(Client_connection *c, const char* error){
 }
 
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers){
-	LOG_INFO("request is %d bytes long\n", pret);
-	LOG_INFO("method is %.*s\n", (int)method_len, method);
-	LOG_INFO("path is %.*s\n", (int)path_len, path);
-	LOG_INFO("HTTP version is 1.%d\n", minor_version);
-	LOG_INFO("headers:\n");
+	LOG_INFO("request is %d bytes long", pret);
+	LOG_INFO("method is %.*s", (int)method_len, method);
+	LOG_INFO("path is %.*s", (int)path_len, path);
+	LOG_INFO("HTTP version is 1.%d", minor_version);
+	LOG_INFO("headers:");
 	for (size_t i = 0; i != num_headers; ++i) {
-		LOG_INFO("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+		LOG_INFO("%.*s: %.*s", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
 	}
 }
@@ -165,6 +167,34 @@ int parse_into_request(Client_connection *c){
 	return E_PARSE;
 }
 
+int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
+	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
+	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
+	struct timespec ts;
+
+	if(verify(pthread_mutex_lock(lag_lock), 		
+		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
+
+	*bytes_ready = c->entry->bytes_ready;
+	while(*bytes_ready <= c->bytes_read){
+		LOG_DEBUG("waiting for 1s: %d, %d", *bytes_ready, c->bytes_read);
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += 1;
+		int twret = pthread_cond_timedwait(lag_cond, lag_lock, &ts);
+		if(twret == ETIMEDOUT){
+			//TODO: create new serverconnection;
+			return S_WAIT;
+		}
+		if(twret < 0){
+			return E_WAIT;
+		}
+	}
+
+	if(verify(pthread_mutex_unlock(lag_lock),								
+		"unlock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};
+	return S_WAIT;
+}
+
 void * client_body(void *raw_struct){
 	LOG_DEBUG("client_body-call");
 	// universal thread body
@@ -176,6 +206,7 @@ void * client_body(void *raw_struct){
 	int freed = 0, labclass = c->labclass;
 
 	do{
+		//TODO: check_panic();
 		switch(c->state){
 			case Parse:
 				if(client_register(c) != S_SEND){
@@ -232,11 +263,13 @@ int client_read_n(Client_connection *c){
 	// reads N chunks and returns
 	//get position to read
 	// TODO refactor to more constant reader registrarion; mb as function in cache
-
-	if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), "find bytes_ready", NO_CLEANUP, NULL) < 0){return E_SEND;};
-		size_t bytes_ready = c->entry->bytes_ready;
-		c->entry->readers_amount++;
-	if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)), "found bytes_ready", NO_CLEANUP, NULL) < 0){return E_SEND;};
+	size_t bytes_ready;
+	if(wait_for_ready_bytes(c, &bytes_ready) != S_WAIT){
+		UNREGISTER_FROM_READERS;
+		LOG_ERROR("cond_timedwait failed");
+		c->state = Done;
+		return E_SEND;
+	}
 	//skip to reading chunk
 	size_t bytes_handled = 0;
 	Chunk * current = c->entry->head;

@@ -18,6 +18,12 @@
 #define HTTP_PORT "80"
 //local stuff
 
+#define REGISTER_AS_READER if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 		\
+	"lock for reg", NO_CLEANUP, NULL) < 0){return E_CONNECT;};								\
+		c->entry->readers_amount++;														\
+	if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								\
+	"unlock for reg", NO_CLEANUP, NULL) < 0){return E_CONNECT;};
+
 Server_Connection * server_init_connection(Client_connection * cl);
 int server_connect(Client_connection *cl);
 int server_send_request(Client_connection *c);
@@ -128,6 +134,7 @@ int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, in
 		}
 		sc->entry = entry;
 		c->entry = entry;
+		REGISTER_AS_READER;
 		if(dispatcher_spin_server_reader(sc) != S_DISPATCH){
 			return E_CONNECT;
 		}
@@ -223,6 +230,20 @@ void free_on_server_error(Server_Connection *sc, const char* error){
 	sc->state = Done;
 }
 
+void lag_broadcast(Cache_entry *c, size_t new_bytes){
+	// extra bcasts in WTCLASS, but anyway..
+	//TODO mb check error? not so relevant
+	pthread_cond_t * lag_cond = &(c->lag_cond);
+	pthread_mutex_t * lag_lock = &(c->lag_lock);
+	
+	verify(pthread_mutex_lock(lag_lock), "new_bytes update lock", NO_CLEANUP, NULL);
+	c->bytes_ready += new_bytes;
+	verify(pthread_mutex_unlock(lag_lock), "new_bytes update unlock", NO_CLEANUP, NULL);
+	
+	verify(pthread_cond_broadcast(lag_cond), "bcast lag cond", NO_CLEANUP, NULL);
+	LOG_DEBUG("put %d bytes", new_bytes);
+}
+
 int server_read_n(Server_Connection *sc){
 	LOG_DEBUG("read_n-call");
 	if(sc->entry == NULL){
@@ -238,23 +259,31 @@ int server_read_n(Server_Connection *sc){
 		LOG_DEBUG("read_n - putting request");
 		buflen = sc->buflen;
 		buf = sc->buf;
+		sc->buflen = 0;
 	}
 
 	LOG_DEBUG("read_n - trying chunk put");
 	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
+		lag_broadcast(sc->entry, 0);
 		return E_READ;
 	}
+	lag_broadcast(sc->entry, chunk->size);
 
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
+		LOG_DEBUG("cycle chunking");
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
+			lag_broadcast(sc->entry, 0);
 			return E_READ;
 		}
 		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
 
 		if(wret < 0){
+			centry_pop(sc->entry);
+			lag_broadcast(sc->entry, 0);
 			return E_SEND;
 		}
 		chunk->size = (size_t)wret;
+		lag_broadcast(sc->entry, chunk->size);
 		if(wret == 0){
 			LOG_INFO("reading read: EOF reached");
 			sc->state = Done;
@@ -286,6 +315,7 @@ void * server_body(void *raw_struct){
 
 	int freed = 0, labclass = sc->labclass;
 	do{
+		//TODO: check_panic()
 		switch(sc->state){
 			case Read:
 				if(server_read_n(sc) != S_READ){

@@ -38,6 +38,9 @@
 #define E_COMMIT -1
 #define S_COMMIT 1
 
+#define E_WAIT -1
+#define S_WAIT 1
+
 /**
  *
  * Control defines (mb migrate to params?)
