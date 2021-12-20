@@ -272,13 +272,14 @@ int client_read_n(Client_connection *c){
 		c->state = Done;
 		return E_SEND;
 	}
+	LOG_DEBUG("bytes_ready: %d", bytes_ready);
 	//skip to reading chunk
 	size_t bytes_handled = 0;
 	Chunk * current = c->entry->head;
 	while(bytes_handled < c->bytes_read){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
-			LOG_ERROR("chunks have less than bytes_ready");
+			LOG_ERROR("chunks have less than bytes_ready - rewind");
 			c->state = Done;
 			return E_SEND;
 		}
@@ -288,7 +289,7 @@ int client_read_n(Client_connection *c){
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
-			LOG_ERROR("chunks have less than bytes_ready");
+			LOG_ERROR("chunks have less than bytes_ready - actual read");
 			c->state = Done;
 			return E_SEND;
 		}
@@ -300,7 +301,7 @@ int client_read_n(Client_connection *c){
 		c->bytes_read += bytes_written;
 		if(wret < 0 || bytes_written < current->size){
 			UNREGISTER_FROM_READERS;
-			LOG_ERROR("write error");
+			LOG_ERROR("write error: ready - %d, handled - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 			c->state = Done;
 			return E_SEND;
 		}

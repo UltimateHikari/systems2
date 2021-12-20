@@ -117,6 +117,7 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 	// TODO: if c->bytes_ready + buflen > bytes_excepted -> error or going to proxy mode;
 	if(buf != NULL){
 		// for puttring request;
+		// lag_signal expected afterwards
 		strncpy(chunk->data, buf, buflen);
 		chunk->size = buflen;
 		if(centry_commit_read(c, buflen) == E_COMMIT){

@@ -242,7 +242,7 @@ void lag_broadcast(Cache_entry *c, size_t new_bytes){
 	verify(pthread_mutex_unlock(lag_lock), "new_bytes update unlock", NO_CLEANUP, NULL);
 	
 	verify(pthread_cond_broadcast(lag_cond), "bcast lag cond", NO_CLEANUP, NULL);
-	LOG_DEBUG("put %d bytes", new_bytes);
+	LOG_DEBUG("put %d bytes into %d", new_bytes, c->bytes_ready);
 }
 
 int server_read_n(Server_Connection *sc){
@@ -271,7 +271,6 @@ int server_read_n(Server_Connection *sc){
 	lag_broadcast(sc->entry, chunk->size);
 
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
-		LOG_DEBUG("cycle chunking");
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
 			lag_broadcast(sc->entry, 0);
 			return E_READ;
@@ -333,7 +332,7 @@ void * server_body(void *raw_struct){
 				freed = 1;
 				break;
 		}
-		
+		freed = 1;
 	}while(!freed && labclass == MTCLASS);
 
 	if(labclass == WTCLASS){
