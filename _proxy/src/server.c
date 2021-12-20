@@ -66,11 +66,11 @@ int server_connect(Client_connection *cl){
 	// +1 for \0
 	char *tmp_hostname = (char*)calloc(cl->request->hostname_len + 1, sizeof(char));
 	strncpy(tmp_hostname, cl->request->hostname, cl->request->hostname_len);
-	LOG_INFO("Resolving %d: %s...\n", strlen(tmp_hostname), tmp_hostname);
+	LOG_INFO("Resolving %d: %s...", strlen(tmp_hostname), tmp_hostname);
 
 	if((gret = getaddrinfo(
 		tmp_hostname, port_str, &hints, &addrs)) != 0){
-		LOG_INFO("%s\n", gai_strerror(gret));
+		LOG_INFO("%s", gai_strerror(gret));
 		free(tmp_hostname);
 		return E_RESOLVE;
 	}
@@ -81,7 +81,7 @@ int server_connect(Client_connection *cl){
 		if(sd < 0){
 			return E_CONNECT;
 		}
-		LOG_INFO("Connecting to %s...\n", addr->ai_addr->sa_data);
+		LOG_INFO("Connecting to %s...", addr->ai_addr->sa_data);
 		if (verify_e(connect(sd, addr->ai_addr, addr->ai_addrlen), "trying connect", NO_CLEANUP, NULL) == 0)
 				break; //succesfully connected;
 
@@ -92,7 +92,7 @@ int server_connect(Client_connection *cl){
 		return E_CONNECT;
 	}
 	c->socket = sd;
-	LOG_INFO("[%d]: connected to %.*s\n", sd, (int)cl->request->hostname_len, cl->request->hostname);
+	LOG_INFO("[%d]: connected to %.*s", sd, (int)cl->request->hostname_len, cl->request->hostname);
 	return S_CONNECT;
 }
 
@@ -161,12 +161,12 @@ int server_send_request(Client_connection *c){
 }
 
 void log_response(int pret, int status, const char *msg, size_t msg_len, int minor_version, size_t num_headers, struct phr_header *headers){
-	LOG_INFO("response is %d bytes long\n", pret);
-	LOG_INFO("msg is %d %.*s\n", status, (int)msg_len, msg);
-	LOG_INFO("HTTP version is 1.%d\n", minor_version);
-	LOG_INFO("headers:\n");
+	LOG_INFO("response is %d bytes long", pret);
+	LOG_INFO("msg is %d %.*s", status, (int)msg_len, msg);
+	LOG_INFO("HTTP version is 1.%d", minor_version);
+	LOG_INFO("headers:");
 	for (size_t i = 0; i != num_headers; ++i) {
-		LOG_INFO("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
+		LOG_INFO("%.*s: %.*s", (int)headers[i].name_len, headers[i].name,
 			(int)headers[i].value_len, headers[i].value);
 	}
 }
@@ -205,14 +205,14 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Content-Length", 14) == 0){
-			LOG_INFO("Found length: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			LOG_INFO("Found length: %.*s", (int)headers[i].value_len, headers[i].value);
 			*bytes_expected = atoi(headers[i].value);
 		}
 	}
 
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Content-Type", 12) == 0){
-			LOG_INFO("Found mime: %.*s\n", (int)headers[i].value_len, headers[i].value);
+			LOG_INFO("Found mime: %.*s", (int)headers[i].value_len, headers[i].value);
 			*mime = (char*)malloc(headers[i].value_len);
 			strncpy(*mime, headers[i].value, headers[i].value_len);
 			*mime_len = headers[i].value_len;
@@ -225,7 +225,7 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 
 void free_on_server_error(Server_Connection *sc, const char* error){
 	// TODO free server_connection if proxying?
-	LOG_ERROR("%s, fd:[%d]\n", error, sc->socket);
+	LOG_ERROR("%s, fd:[%d]", error, sc->socket);
 	centry_pop(sc->entry); //remove unwritten chunk for sake of next connections
 	sc->state = Done;
 }
@@ -257,9 +257,9 @@ int server_read_n(Server_Connection *sc){
 
 	if(sc->buflen > 0){
 		// need to cache request from buf to cache;
-		LOG_DEBUG("read_n - putting request");
 		buflen = sc->buflen;
 		buf = sc->buf;
+		LOG_DEBUG("read_n - putting response: %d bytes", buflen);
 		sc->buflen = 0;
 	}
 
@@ -268,7 +268,6 @@ int server_read_n(Server_Connection *sc){
 		lag_broadcast(sc->entry, 0);
 		return E_READ;
 	}
-	lag_broadcast(sc->entry, chunk->size);
 
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
@@ -314,6 +313,7 @@ void * server_body(void *raw_struct){
 	Server_Connection *sc = (Server_Connection *)raw_struct;
 
 	int freed = 0, labclass = sc->labclass;
+	int i = 0;
 	do{
 		//TODO: check_panic()
 		switch(sc->state){
@@ -332,7 +332,10 @@ void * server_body(void *raw_struct){
 				freed = 1;
 				break;
 		}
-		freed = 1;
+		i++;
+		if(i == 10){
+			freed = 1;
+		}
 	}while(!freed && labclass == MTCLASS);
 
 	if(labclass == WTCLASS){

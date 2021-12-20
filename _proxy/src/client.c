@@ -273,6 +273,7 @@ int client_read_n(Client_connection *c){
 		return E_SEND;
 	}
 	LOG_DEBUG("bytes_ready: %d", bytes_ready);
+	
 	//skip to reading chunk
 	size_t bytes_handled = 0;
 	Chunk * current = c->entry->head;
@@ -283,17 +284,19 @@ int client_read_n(Client_connection *c){
 			c->state = Done;
 			return E_SEND;
 		}
+		LOG_DEBUG("moving chunk");
 		bytes_handled += current->size;
 		current = current->next;
 	}
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
+		size_t bytes_written = 0;
 		if(current == NULL){
 			UNREGISTER_FROM_READERS;
 			LOG_ERROR("chunks have less than bytes_ready - actual read");
+			LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 			c->state = Done;
 			return E_SEND;
 		}
-		size_t bytes_written = 0;
 		int wret;
 		while( (wret = write(c->socket, current->data + bytes_written, current->size - bytes_written)) > 0){
 			bytes_written += wret;
@@ -301,11 +304,13 @@ int client_read_n(Client_connection *c){
 		c->bytes_read += bytes_written;
 		if(wret < 0 || bytes_written < current->size){
 			UNREGISTER_FROM_READERS;
-			LOG_ERROR("write error: ready - %d, handled - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
+			LOG_ERROR("write error");
+			LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 			c->state = Done;
 			return E_SEND;
 		}
 		current = current-> next;
+		LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 	}
 	return S_SEND;
 }

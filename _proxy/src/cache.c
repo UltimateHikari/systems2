@@ -7,6 +7,7 @@
 #include "prerror.h"
 #include "cache.h"
 #include "logger.h"
+#include "server.h"
 
 // Translation unit-local funcs
 void *cache_cleanup(void *raw_cache);
@@ -120,10 +121,12 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 		// lag_signal expected afterwards
 		strncpy(chunk->data, buf, buflen);
 		chunk->size = buflen;
-		if(centry_commit_read(c, buflen) == E_COMMIT){
-			chunk_destroy(chunk);
-			chunk = NULL;
-		}
+		//TODO handle error of lag_broadcast;
+		lag_broadcast(c, buflen);
+		// if(centry_commit_read(c, buflen) == E_COMMIT){
+		// 	chunk_destroy(chunk);
+		// 	chunk = NULL;
+		// }
 	}
 	return chunk;
 }
@@ -135,17 +138,15 @@ Chunk * centry_pop(Cache_entry *c){
 	return NULL;
 }
 
-int centry_commit_read(Cache_entry *c, size_t buflen){
-	LOG_DEBUG("centry_commit");
-	if(verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP, NULL) < 0){ 
-		return E_COMMIT; 
-	};
-	c->bytes_ready += buflen;
-	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP, NULL);
-	return S_COMMIT;
-}
-
-
+// int centry_commit_read(Cache_entry *c, size_t buflen){
+// 	LOG_DEBUG("centry_commit");
+// 	if(verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP, NULL) < 0){ 
+// 		return E_COMMIT; 
+// 	};
+// 	c->bytes_ready += buflen;
+// 	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP, NULL);
+// 	return S_COMMIT;
+// }
 
 int chunk_destroy(Chunk *c){
 	if(c == NULL){
@@ -207,7 +208,7 @@ Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect){
 }
 
 bool is_eligible_to_collect(Cache_entry *c){
-	// TODO maybe need to acquire collector lock
+	// TODO check for active server connection, kill or sth
 	return (c->readers_amount == 0);
 }
 
