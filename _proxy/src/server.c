@@ -57,9 +57,10 @@ int server_connect(Client_connection *cl){
 	char *port_str = HTTP_PORT;
 
 
-	char *tmp_hostname = (char*)malloc(cl->request->hostname_len);
+	// +1 for \0
+	char *tmp_hostname = (char*)calloc(cl->request->hostname_len + 1, sizeof(char));
 	strncpy(tmp_hostname, cl->request->hostname, cl->request->hostname_len);
-	LOG_INFO("Resolving %s ...\n", tmp_hostname);
+	LOG_INFO("Resolving %d: %s...\n", strlen(tmp_hostname), tmp_hostname);
 
 	if((gret = getaddrinfo(
 		tmp_hostname, port_str, &hints, &addrs)) != 0){
@@ -109,6 +110,7 @@ int spin_server_connection(Client_connection *c){
 
 int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, int mime_len, Client_connection *c){
 	Server_Connection *sc = c->c;
+	Cache_entry *entry;
 	if(status == 200){
 		// put in cache
 		LOG_DEBUG("Trying Reading...");
@@ -118,12 +120,14 @@ int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, in
 			// no content-length was provided
 			response_bytes_expected = BE_INF;
 		}
-		if(cache_put(c->cache, response_bytes_expected, c->request, mime, mime_len) == NULL){
+		if((entry = cache_put(c->cache, response_bytes_expected, c->request, mime, mime_len)) == NULL){
 			LOG_DEBUG("...Started Proxying");
 			sc->state = Proxy;
 			c->state = Proxy;
 			return S_CONNECT;
 		}
+		sc->entry = entry;
+		c->entry = entry;
 		if(dispatcher_spin_server_reader(sc) != S_DISPATCH){
 			return E_CONNECT;
 		}

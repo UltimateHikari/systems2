@@ -25,6 +25,7 @@ void* listener_cleanup(void *raw_listener){
 	Listener ** listener = (Listener**)raw_listener;
 	PRETURN_NULL_IF_NULL(*listener);
 	if((*listener)->socket != NO_SOCK){
+		LOG_DEBUG("closing accept socket");
 		close((*listener)->socket);
 	}
 	free(*listener);
@@ -125,6 +126,7 @@ void join_threads(Dispatcher *d){
 }
 
 int dispatcher_spin_server_reader(Server_Connection *sc){
+	LOG_DEBUG("dispatcher_spin_server_reader");
 	int labclass = sc->labclass;
 	Dispatcher *d = (Dispatcher *)sc->d;
 	void* arg = (void*)&d;
@@ -144,6 +146,7 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 }
 
 int dispatcher_spin_client_reader(Client_connection *cc){
+	LOG_DEBUG("dispatcher_spin_server_reader");
 	int labclass = cc->labclass;
 	Dispatcher *d = (Dispatcher *)cc->d;
 	void* arg = (void*)&d;
