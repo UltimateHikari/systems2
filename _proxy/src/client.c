@@ -168,6 +168,7 @@ int parse_into_request(Client_connection *c){
 }
 
 int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
+	//LOG_DEBUG("my entry is %p", c->entry);
 	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
 	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
 	struct timespec ts;
@@ -188,6 +189,7 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 		if(twret < 0){
 			return E_WAIT;
 		}
+		*bytes_ready = c->entry->bytes_ready;
 	}
 
 	if(verify(pthread_mutex_unlock(lag_lock),								

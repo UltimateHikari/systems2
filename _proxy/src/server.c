@@ -231,6 +231,7 @@ void free_on_server_error(Server_Connection *sc, const char* error){
 }
 
 void lag_broadcast(Cache_entry *c, size_t new_bytes){
+	//LOG_DEBUG("my entry is %p", c);
 	// extra bcasts in WTCLASS, but anyway..
 	//TODO mb check error? not so relevant
 	pthread_cond_t * lag_cond = &(c->lag_cond);
