@@ -218,6 +218,7 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 		ts.tv_sec += 1;
 		int twret = pthread_cond_timedwait(lag_cond, lag_lock, &ts);
 		if(twret == ETIMEDOUT){
+			LOG_INFO("timed out");
 			//TODO: create new serverconnection;
 			return S_WAIT;
 		}
@@ -335,7 +336,7 @@ int client_read_n(Client_connection *c){
 			return E_SEND;
 		}
 	}
-	LOG_DEBUG("read_n, transmitted %d bytes", (c->bytes_read - bytes_read_before));
+	LOG_INFO("sent %d bytes, now %d", (c->bytes_read - bytes_read_before), c->bytes_read);
 	return check_if_done(c);
 }
 

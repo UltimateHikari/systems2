@@ -20,6 +20,7 @@ void try_call(void*(*free_resources)(void *), void *arg){
 
 void check_panic(void*(*free_resources)(void *), void *arg){
 	if(exit_flag != 0){
+		LOG_INFO("panicing");
 		try_call(free_resources, arg);
 		pthread_exit(NULL);
 	}

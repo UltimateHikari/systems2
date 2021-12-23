@@ -246,7 +246,7 @@ void lag_broadcast(Cache_entry *c, size_t new_bytes){
 	verify(pthread_mutex_unlock(lag_lock), "new_bytes update unlock", NO_CLEANUP, NULL);
 	
 	verify(pthread_cond_broadcast(lag_cond), "bcast lag cond", NO_CLEANUP, NULL);
-	LOG_DEBUG("put %d bytes, now %d", new_bytes, c->bytes_ready);
+	LOG_INFO("put %d bytes, now %d", new_bytes, c->bytes_ready);
 }
 
 #define BROADCAST_AND_RETURN(res) 					\
@@ -279,6 +279,10 @@ int server_read_n(Server_Connection *sc){
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
 			LOG_ERROR("chunk creation");
 			BROADCAST_AND_RETURN(E_READ);
+		}
+		if(check_flag()){
+			LOG_ERROR("panic");
+			return E_READ;
 		}
 		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
 		if(wret < 0){
@@ -321,7 +325,7 @@ void * server_body(void *raw_struct){
 	int freed = 0, labclass = sc->labclass;
 	void * arg = (void*)&sc;
 	do{
-		check_panic(server_cleanup,arg);
+		check_panic(server_cleanup, arg);
 		switch(sc->state){
 			case Read:
 				if(server_read_n(sc) != S_READ){
