@@ -31,6 +31,16 @@ void log_response(int pret, int status, const char *msg, size_t msg_len, int min
 int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_expected, char **mime, int *mime_len);
 int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, int mime_len, Client_connection *c);
 
+void * server_cleanup(void *raw_server){
+	LOG_INFO("server_cleanup");
+	RETURN_NULL_IF_NULL(raw_server);
+	Server_Connection ** server = (Server_Connection**)raw_server;
+	RETURN_NULL_IF_NULL(*server);
+	server_destroy_connection(*server);
+	*server = NULL;
+	return NULL;
+	// no pthread_exit because workers
+}
 
 Server_Connection * server_init_connection(Client_connection * cl){
 	LOG_DEBUG("server_init_connection-call");
@@ -275,6 +285,7 @@ int server_read_n(Server_Connection *sc){
 	}
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
+			LOG_ERROR("chunk creation");
 			BROADCAST_AND_RETURN(E_READ);
 		}
 		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
@@ -317,9 +328,9 @@ void * server_body(void *raw_struct){
 	Server_Connection *sc = (Server_Connection *)raw_struct;
 
 	int freed = 0, labclass = sc->labclass;
-	int i = 0;
+	void * arg = (void*)&sc;
 	do{
-		//TODO: check_panic()
+		check_panic(server_cleanup,arg);
 		switch(sc->state){
 			case Read:
 				if(server_read_n(sc) != S_READ){
@@ -336,10 +347,6 @@ void * server_body(void *raw_struct){
 				freed = 1;
 				break;
 		}
-		// i++;
-		// if(i == 10){
-		// 	freed = 1;
-		// }
 	}while(!freed && labclass == MTCLASS);
 
 	if(labclass == WTCLASS){

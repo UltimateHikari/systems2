@@ -40,7 +40,7 @@ void * client_cleanup(void *raw_client){
 	LOG_INFO("client_cleanup");
 	RETURN_NULL_IF_NULL(raw_client);
 	Client_connection ** client = (Client_connection**)raw_client;
-	RETURN_NULL_IF_NULL((client));
+	RETURN_NULL_IF_NULL(*client);
 	free_connection(*client);
 	*client = NULL;
 	return NULL;
@@ -178,7 +178,14 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 	if(verify(pthread_mutex_lock(lag_lock), 		
 		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
 	*bytes_ready = c->entry->bytes_ready;
-	while(*bytes_ready <= c->bytes_read){
+	if(*bytes_ready < c->bytes_read){
+		if(verify(pthread_mutex_unlock(lag_lock),								
+		"unlock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};
+		panic_signal();
+		LOG_ERROR("ready < read: %d < %d", *bytes_ready, c->bytes_read);
+		return E_SEND;
+	}
+	while(*bytes_ready == c->bytes_read){
 		LOG_DEBUG("waiting for 1s: %d, %d", *bytes_ready, c->bytes_read);
 		clock_gettime(CLOCK_REALTIME, &ts);
 		ts.tv_sec += 1;
