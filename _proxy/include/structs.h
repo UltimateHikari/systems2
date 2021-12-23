@@ -109,6 +109,8 @@ typedef struct{
 	size_t bytes_read;
 	Server_Connection *c;
 	void *d;
+	Chunk *current;
+	//TODO is registered, reorder to owning/not
 } Client_connection;
 
 typedef struct{

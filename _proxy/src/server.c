@@ -245,6 +245,10 @@ void lag_broadcast(Cache_entry *c, size_t new_bytes){
 	LOG_DEBUG("put %d bytes into %d", new_bytes, c->bytes_ready);
 }
 
+#define BROADCAST_AND_RETURN(res) 					\
+	lag_broadcast(sc->entry, read_on_iteration);	\
+	return res;
+
 int server_read_n(Server_Connection *sc){
 	LOG_DEBUG("read_n-call");
 	if(sc->entry == NULL){
@@ -264,31 +268,31 @@ int server_read_n(Server_Connection *sc){
 	}
 
 	LOG_DEBUG("read_n - trying chunk put");
-	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
-		lag_broadcast(sc->entry, 0);
-		return E_READ;
-	}
 
+	size_t read_on_iteration = 0; //iteration means call
+	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
+		BROADCAST_AND_RETURN(E_READ);
+	}
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
-			lag_broadcast(sc->entry, 0);
-			return E_READ;
+			BROADCAST_AND_RETURN(E_READ);
 		}
 		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
 
 		if(wret < 0){
 			centry_pop(sc->entry);
-			lag_broadcast(sc->entry, 0);
-			return E_SEND;
+			BROADCAST_AND_RETURN(E_READ);
 		}
 		chunk->size = (size_t)wret;
-		lag_broadcast(sc->entry, chunk->size);
+		read_on_iteration += (size_t)wret;
+		
 		if(wret == 0){
 			LOG_INFO("reading read: EOF reached");
 			sc->state = Done;
+			BROADCAST_AND_RETURN(S_READ);
 		}
 	}
-	return S_READ;
+	BROADCAST_AND_RETURN(S_READ);
 }
 
 int server_destroy_connection(Server_Connection *sc){
@@ -332,10 +336,10 @@ void * server_body(void *raw_struct){
 				freed = 1;
 				break;
 		}
-		i++;
-		if(i == 10){
-			freed = 1;
-		}
+		// i++;
+		// if(i == 10){
+		// 	freed = 1;
+		// }
 	}while(!freed && labclass == MTCLASS);
 
 	if(labclass == WTCLASS){

@@ -32,6 +32,7 @@ int client_read_n(Client_connection *c);
 int client_proxy_n(Client_connection *c);
 int proxy_read(Client_connection *c);
 int proxy_write(Client_connection *c);
+Chunk* init_current_chunk(Client_connection *c);
 
 //cleanup
 
@@ -75,6 +76,7 @@ Client_connection *init_connection(int class, Dispatcher *d){
 	c->bytes_read = 0;
 	c->c = NULL;
 	c->d = (void*)d;
+	c->current = NULL;
 	return c;
 }
 
@@ -168,14 +170,13 @@ int parse_into_request(Client_connection *c){
 }
 
 int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
-	//LOG_DEBUG("my entry is %p", c->entry);
+	LOG_DEBUG("wait-for-call");
 	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
 	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
 	struct timespec ts;
 
 	if(verify(pthread_mutex_lock(lag_lock), 		
 		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
-
 	*bytes_ready = c->entry->bytes_ready;
 	while(*bytes_ready <= c->bytes_read){
 		LOG_DEBUG("waiting for 1s: %d, %d", *bytes_ready, c->bytes_read);
@@ -207,8 +208,10 @@ void * client_body(void *raw_struct){
 
 	int freed = 0, labclass = c->labclass;
 
+	void * arg = (void*)&c;
 	do{
-		//TODO: check_panic();
+		//TODO uncheck himself
+		check_panic(client_cleanup, arg);
 		switch(c->state){
 			case Parse:
 				if(client_register(c) != S_SEND){
@@ -274,45 +277,49 @@ int client_read_n(Client_connection *c){
 	}
 	LOG_DEBUG("bytes_ready: %d", bytes_ready);
 	
-	//skip to reading chunk
-	size_t bytes_handled = 0;
-	Chunk * current = c->entry->head;
-	while(bytes_handled < c->bytes_read){
-		if(current == NULL){
-			UNREGISTER_FROM_READERS;
-			LOG_ERROR("chunks have less than bytes_ready - rewind");
-			c->state = Done;
-			return E_SEND;
-		}
-		LOG_DEBUG("moving chunk");
-		bytes_handled += current->size;
-		current = current->next;
+	if(c->current == NULL){
+		init_current_chunk(c);
 	}
+	
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
 		size_t bytes_written = 0;
-		if(current == NULL){
+		if(c->current == NULL){
 			UNREGISTER_FROM_READERS;
 			LOG_ERROR("chunks have less than bytes_ready - actual read");
-			LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 			c->state = Done;
 			return E_SEND;
 		}
 		int wret;
-		while( (wret = write(c->socket, current->data + bytes_written, current->size - bytes_written)) > 0){
+		while( (wret = write(c->socket, c->current->data + bytes_written, c->current->size - bytes_written)) > 0){
 			bytes_written += wret;
 		}
+		if(errno == EINTR){
+			LOG_ERROR("client noted");
+		}
 		c->bytes_read += bytes_written;
-		if(wret < 0 || bytes_written < current->size){
+		if(wret < 0 || bytes_written < c->current->size){
 			UNREGISTER_FROM_READERS;
 			LOG_ERROR("write error");
-			LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
 			c->state = Done;
 			return E_SEND;
 		}
-		current = current-> next;
-		LOG_INFO("ready - %d, transmitted - %d, written - %d", bytes_ready, c->bytes_read, bytes_written);
+		c->current = c->current->next; //todo replace with on start of cycle
+	}
+	return check_if_done(c);
+}
+
+int check_if_done(Client_connection *c){
+	if(c->bytes_read == c->entry->bytes_expected){
+		LOG_INFO("Client done reading");
+		return E_SEND;
 	}
 	return S_SEND;
+}
+
+Chunk* init_current_chunk(Client_connection *c){
+	c->current = c->entry->head;
+	RETURN_NULL_IF_NULL(c->current);
+	return c->current;
 }
 
 int client_proxy_n(Client_connection *c){
