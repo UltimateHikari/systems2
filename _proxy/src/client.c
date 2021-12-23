@@ -13,16 +13,6 @@
 #include "picohttpparser.h"
 #include "logger.h"
 
-#define UNREGISTER_FROM_READERS if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 	\
-		"lock for unreg", NO_CLEANUP, NULL) < 0){return E_SEND;}; 						\
-		c->entry->readers_amount--; 													\
-		verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								\
-		"unlock for unreg", NO_CLEANUP, NULL);
-
-#define FREE_CONNECTION LOG_INFO("freeing connection"); \
-				free_connection(c);						\
-				freed = 1;
-
 // local declarations
 int parse_into_request(Client_connection *c);
 void free_as_request_owner(Client_connection *c, const char* error);
@@ -33,6 +23,7 @@ int client_proxy_n(Client_connection *c);
 int proxy_read(Client_connection *c);
 int proxy_write(Client_connection *c);
 Chunk* init_current_chunk(Client_connection *c);
+int check_if_done(Client_connection *c);
 
 //cleanup
 
@@ -77,13 +68,16 @@ Client_connection *init_connection(int class, Dispatcher *d){
 	c->c = NULL;
 	c->d = (void*)d;
 	c->current = NULL;
+	c->is_registered = NOT_REGISTERED;
 	return c;
 }
 
 int free_connection(Client_connection *c){
+	LOG_DEBUG("free_connection-call");
 	if(c == NULL){
 		return E_DESTROY;
 	}
+	unregister_connection(c);
 	if(c->socket != NO_SOCK){
 		close(c->socket);
 	}
@@ -100,6 +94,38 @@ void free_as_request_owner(Client_connection *c, const char* error){
 	free_request(c->request);
 	c->request = NULL;
 	c->state = Done;
+}
+
+int register_connection(Client_connection *c){
+	LOG_DEBUG("registering");
+	if(c->is_registered == NOT_REGISTERED){
+		if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 	\
+			"lock for unreg", NO_CLEANUP, NULL) < 0){return E_REG;}; 
+		c->entry->readers_amount++; 
+		if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),
+			"unlock for unreg", NO_CLEANUP, NULL) < 0){
+				c->is_registered = IS_REGISTERED;
+				return E_REG;
+			};
+		c->is_registered = IS_REGISTERED;
+	}
+	return S_REG;
+}
+
+int unregister_connection(Client_connection *c){
+	LOG_DEBUG("unregistering");
+	if(c->is_registered == IS_REGISTERED){
+		if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 	\
+			"lock for unreg", NO_CLEANUP, NULL) < 0){return E_REG;}; 
+		c->entry->readers_amount--; 
+		if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),
+			"unlock for unreg", NO_CLEANUP, NULL) < 0){
+				c->is_registered = NOT_REGISTERED;
+				return E_REG;
+			};
+		c->is_registered = NOT_REGISTERED;
+	}
+	return S_REG;
 }
 
 void log_request(int pret, size_t method_len, const char* method, size_t path_len, const char* path, int minor_version, size_t num_headers, struct phr_header *headers){
@@ -205,6 +231,10 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 	return S_WAIT;
 }
 
+#define BODY_FREE_CONNECTION							\
+				free_connection(c);						\
+				freed = 1;
+
 void * client_body(void *raw_struct){
 	LOG_DEBUG("client_body-call");
 	// universal thread body
@@ -222,22 +252,22 @@ void * client_body(void *raw_struct){
 		switch(c->state){
 			case Parse:
 				if(client_register(c) != S_SEND){
-					FREE_CONNECTION;
+					BODY_FREE_CONNECTION;
 				}
 				break;
 			case Read:
 				if(client_read_n(c) != S_SEND){
-					FREE_CONNECTION;
+					BODY_FREE_CONNECTION;
 				}
 				break;
 			case Proxy:
 				if(client_proxy_n(c) != S_SEND){
-					FREE_CONNECTION;
+					BODY_FREE_CONNECTION;
 				}
 				break;
 			default:
 				// if smh scheduled as done
-				FREE_CONNECTION;
+				BODY_FREE_CONNECTION;
 		}
 	} while(!freed && labclass == MTCLASS);
 
@@ -277,12 +307,10 @@ int client_read_n(Client_connection *c){
 	// TODO refactor to more constant reader registrarion; mb as function in cache
 	size_t bytes_ready;
 	if(wait_for_ready_bytes(c, &bytes_ready) != S_WAIT){
-		UNREGISTER_FROM_READERS;
 		LOG_ERROR("cond_timedwait failed");
-		c->state = Done;
 		return E_SEND;
 	}
-	LOG_DEBUG("bytes_ready: %d", bytes_ready);
+	LOG_DEBUG("bytes_read, bytes_ready: %d, %d",c->bytes_read, bytes_ready);
 	
 	if(c->current == NULL){
 		init_current_chunk(c);
@@ -291,23 +319,17 @@ int client_read_n(Client_connection *c){
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
 		size_t bytes_written = 0;
 		if(c->current == NULL){
-			UNREGISTER_FROM_READERS;
 			LOG_ERROR("chunks have less than bytes_ready - actual read");
-			c->state = Done;
 			return E_SEND;
 		}
 		int wret;
 		while( (wret = write(c->socket, c->current->data + bytes_written, c->current->size - bytes_written)) > 0){
 			bytes_written += wret;
 		}
-		if(errno == EINTR){
-			LOG_ERROR("client noted");
-		}
+		LOG_DEBUG("written: %d", bytes_written);
 		c->bytes_read += bytes_written;
 		if(wret < 0 || bytes_written < c->current->size){
-			UNREGISTER_FROM_READERS;
 			LOG_ERROR("write error");
-			c->state = Done;
 			return E_SEND;
 		}
 		c->current = c->current->next; //todo replace with on start of cycle

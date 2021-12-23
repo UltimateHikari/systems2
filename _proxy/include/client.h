@@ -18,4 +18,7 @@ int free_connection(Client_connection *c);
 
 void * client_body(void *raw_struct);
 
+int register_connection(Client_connection *c);
+int unregister_connection(Client_connection *c);
+
 #endif

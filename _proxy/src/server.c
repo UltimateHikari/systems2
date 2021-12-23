@@ -14,15 +14,10 @@
 #include "dispatcher.h"
 #include "picohttpparser.h"
 #include "logger.h"
+#include "client.h"
 
 #define HTTP_PORT "80"
 //local stuff
-
-#define REGISTER_AS_READER if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 		\
-	"lock for reg", NO_CLEANUP, NULL) < 0){return E_CONNECT;};								\
-		c->entry->readers_amount++;														\
-	if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								\
-	"unlock for reg", NO_CLEANUP, NULL) < 0){return E_CONNECT;};
 
 Server_Connection * server_init_connection(Client_connection * cl);
 int server_connect(Client_connection *cl);
@@ -144,7 +139,7 @@ int choose_read_or_proxy(int status, int response_bytes_expected, char* mime, in
 		}
 		sc->entry = entry;
 		c->entry = entry;
-		REGISTER_AS_READER;
+		register_connection(c);
 		if(dispatcher_spin_server_reader(sc) != S_DISPATCH){
 			return E_CONNECT;
 		}
@@ -216,7 +211,7 @@ int server_parse_into_response(Server_Connection * sc, int *status, int *bytes_e
 	for (size_t i = 0; i != num_headers; ++i) {
 		if(strncmp(headers[i].name, "Content-Length", 14) == 0){
 			LOG_INFO("Found length: %.*s", (int)headers[i].value_len, headers[i].value);
-			*bytes_expected = atoi(headers[i].value);
+			*bytes_expected = atoi(headers[i].value) + pret; //NOTE: Content-length + headers
 		}
 	}
 
@@ -252,7 +247,7 @@ void lag_broadcast(Cache_entry *c, size_t new_bytes){
 	verify(pthread_mutex_unlock(lag_lock), "new_bytes update unlock", NO_CLEANUP, NULL);
 	
 	verify(pthread_cond_broadcast(lag_cond), "bcast lag cond", NO_CLEANUP, NULL);
-	LOG_DEBUG("put %d bytes into %d", new_bytes, c->bytes_ready);
+	LOG_DEBUG("put %d bytes, now %d", new_bytes, c->bytes_ready);
 }
 
 #define BROADCAST_AND_RETURN(res) 					\
@@ -284,6 +279,7 @@ int server_read_n(Server_Connection *sc){
 		BROADCAST_AND_RETURN(E_READ);
 	}
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
+		LOG_DEBUG("iteration %d",i);
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
 			LOG_ERROR("chunk creation");
 			BROADCAST_AND_RETURN(E_READ);

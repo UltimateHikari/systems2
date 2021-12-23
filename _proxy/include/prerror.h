@@ -41,6 +41,9 @@
 #define E_WAIT -1
 #define S_WAIT 1
 
+#define E_REG -1
+#define S_REG 1
+
 /**
  *
  * Control defines (mb migrate to params?)
@@ -58,6 +61,8 @@
 // Client read:
 #define CHUNKS_TO_READ 10
 
-
+// CC as reader
+#define NOT_REGISTERED 0
+#define IS_REGISTERED 1
 
 #endif

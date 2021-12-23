@@ -110,7 +110,7 @@ typedef struct{
 	Server_Connection *c;
 	void *d;
 	Chunk *current;
-	//TODO is registered, reorder to owning/not
+	int is_registered;
 } Client_connection;
 
 typedef struct{
