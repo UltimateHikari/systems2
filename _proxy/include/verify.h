@@ -9,7 +9,7 @@
 
 #define NO_CLEANUP NULL
 
-#define RETURN_NULL_IF_NULL(a) if(a == NULL){ return NULL; }
+#define RETURN_NULL_IF_NULL(a) if(a == NULL){ LOG_ERROR("NULL macro"); return NULL; }
 #define PRETURN_NULL_IF_NULL(a) if(a == NULL){ pthread_exit(NULL); }
 
 

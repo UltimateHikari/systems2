@@ -69,6 +69,7 @@ Client_connection *init_connection(int class, Dispatcher *d){
 	c->d = (void*)d;
 	c->current = NULL;
 	c->is_registered = NOT_REGISTERED;
+	c->debug_chunk_number=0;
 	return c;
 }
 
@@ -311,14 +312,15 @@ int client_read_n(Client_connection *c){
 		return E_SEND;
 	}
 	LOG_DEBUG("bytes_read, bytes_ready: %d, %d",c->bytes_read, bytes_ready);
-	
-	if(c->current == NULL){
-		init_current_chunk(c);
-	}
-	
+	size_t bytes_read_before = c->bytes_read;
 	for(int i = 0; (i < CHUNKS_TO_READ) && (c->bytes_read < bytes_ready); i++){
 		size_t bytes_written = 0;
 		if(c->current == NULL){
+			init_current_chunk(c); // getting head;
+		} else {
+			c->current = c->current->next; //todo replace with on start of cycle
+		}
+		if(c->current == NULL){ //still NULL == error
 			LOG_ERROR("chunks have less than bytes_ready - actual read");
 			return E_SEND;
 		}
@@ -326,14 +328,14 @@ int client_read_n(Client_connection *c){
 		while( (wret = write(c->socket, c->current->data + bytes_written, c->current->size - bytes_written)) > 0){
 			bytes_written += wret;
 		}
-		LOG_DEBUG("written: %d", bytes_written);
 		c->bytes_read += bytes_written;
+		
 		if(wret < 0 || bytes_written < c->current->size){
 			LOG_ERROR("write error");
 			return E_SEND;
 		}
-		c->current = c->current->next; //todo replace with on start of cycle
 	}
+	LOG_DEBUG("read_n, transmitted %d bytes", (c->bytes_read - bytes_read_before));
 	return check_if_done(c);
 }
 

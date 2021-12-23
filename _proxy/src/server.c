@@ -241,7 +241,6 @@ void lag_broadcast(Cache_entry *c, size_t new_bytes){
 	//TODO mb check error? not so relevant
 	pthread_cond_t * lag_cond = &(c->lag_cond);
 	pthread_mutex_t * lag_lock = &(c->lag_lock);
-	
 	verify(pthread_mutex_lock(lag_lock), "new_bytes update lock", NO_CLEANUP, NULL);
 	c->bytes_ready += new_bytes;
 	verify(pthread_mutex_unlock(lag_lock), "new_bytes update unlock", NO_CLEANUP, NULL);
@@ -272,20 +271,16 @@ int server_read_n(Server_Connection *sc){
 		sc->buflen = 0;
 	}
 
-	LOG_DEBUG("read_n - trying chunk put");
-
 	size_t read_on_iteration = 0; //iteration means call
 	if((chunk = centry_put(sc->entry, buf, buflen)) == NULL){
 		BROADCAST_AND_RETURN(E_READ);
 	}
 	for(int i = 0; (i < CHUNKS_TO_READ); i++){
-		LOG_DEBUG("iteration %d",i);
 		if((chunk = centry_put(sc->entry, NULL, 0)) == NULL){
 			LOG_ERROR("chunk creation");
 			BROADCAST_AND_RETURN(E_READ);
 		}
 		int wret = verify_e(read(sc->socket, chunk->data, REQBUFSIZE), "reading read", NO_CLEANUP, NULL);
-
 		if(wret < 0){
 			centry_pop(sc->entry);
 			BROADCAST_AND_RETURN(E_READ);

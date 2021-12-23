@@ -105,6 +105,7 @@ int centry_destroy(Cache_entry * c){
 // can just append empty chunk
 Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 	Chunk *chunk = (Chunk *)malloc(sizeof(Chunk));
+	RETURN_NULL_IF_NULL(chunk);
 	chunk->size = 0;
 	chunk->next = NULL;
 
@@ -121,12 +122,7 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 		// lag_signal expected afterwards
 		strncpy(chunk->data, buf, buflen);
 		chunk->size = buflen;
-		//TODO handle error of lag_broadcast;
 		lag_broadcast(c, buflen);
-		// if(centry_commit_read(c, buflen) == E_COMMIT){
-		// 	chunk_destroy(chunk);
-		// 	chunk = NULL;
-		// }
 	}
 	return chunk;
 }

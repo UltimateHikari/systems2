@@ -97,6 +97,7 @@ typedef struct{
 	char buf[REQBUFSIZE];
 	size_t buflen;
 	void *d;
+	size_t debug_chunk_number;
 } Server_Connection;
 
 typedef struct{
@@ -111,6 +112,7 @@ typedef struct{
 	void *d;
 	Chunk *current;
 	int is_registered;
+	size_t debug_chunk_number;
 } Client_connection;
 
 typedef struct{

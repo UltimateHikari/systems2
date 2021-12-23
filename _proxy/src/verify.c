@@ -30,12 +30,12 @@ int verify_neq(int rc){
 }
 
 int verify_less(int rc){
-	return (errno < 0);
+	return (rc < 0);
 }
 
 int verify_common(int rc, const char* action, void*(*free_resources)(void *), void *arg, int(*condition)(int)){
 	char err_buf[BUFLEN];
-	strerror_r(rc, err_buf, BUFLEN);
+	strerror_r(rc, err_buf, BUFLEN); //optional TODO switch with errno
 	if(condition(rc)){
 		LOG_ERROR("%s - %s", action, err_buf);
 		try_call(free_resources, arg);
