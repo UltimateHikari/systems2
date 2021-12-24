@@ -196,36 +196,64 @@ int parse_into_request(Client_connection *c){
 	return E_PARSE;
 }
 
-int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
-	LOG_DEBUG("wait-for-call");
+int check_pointers_correctness(Client_connection *c, size_t ready, size_t read){
+	if(ready < read){
+		if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								
+		"unlock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};
+		panic_signal();
+		LOG_ERROR("ready < read: %d < %d", ready, read);
+		return E_WAIT;
+	}
+	return S_WAIT;
+}
+
+int wait_on_lock_cond(Client_connection *c, size_t *bytes_ready){
 	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
 	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
 	struct timespec ts;
 
-	if(verify(pthread_mutex_lock(lag_lock), 		
-		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
-	*bytes_ready = c->entry->bytes_ready;
-	if(*bytes_ready < c->bytes_read){
-		if(verify(pthread_mutex_unlock(lag_lock),								
-		"unlock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};
-		panic_signal();
-		LOG_ERROR("ready < read: %d < %d", *bytes_ready, c->bytes_read);
-		return E_SEND;
-	}
 	while(*bytes_ready == c->bytes_read){
 		LOG_DEBUG("waiting for 1s: %d, %d", *bytes_ready, c->bytes_read);
 		clock_gettime(CLOCK_REALTIME, &ts);
 		ts.tv_sec += 1;
 		int twret = pthread_cond_timedwait(lag_cond, lag_lock, &ts);
+
 		if(twret == ETIMEDOUT){
 			LOG_INFO("timed out");
-			//TODO: create new serverconnection;
-			return S_WAIT;
+			if(centry_mci_dead(c->entry)){
+				LOG_INFO("creating new Server_connection");
+				/*spin_server_connection(c);
+			}
+			return S_WAIT;*/
+				LOG_INFO("actually no, Server_connection coming soon*");
+			}
+			return E_WAIT; // stub
 		}
+
 		if(twret < 0){
 			return E_WAIT;
 		}
 		*bytes_ready = c->entry->bytes_ready;
+	}
+	return S_WAIT;
+}
+
+int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
+	LOG_DEBUG("wait-for-call");
+	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
+	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
+	int rc;
+
+	if(verify(pthread_mutex_lock(lag_lock), 		
+		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
+	*bytes_ready = c->entry->bytes_ready;
+	
+	if((rc = check_pointers_correctness(c, *bytes_ready, c->bytes_read)) != S_WAIT){
+		return rc;
+	}
+
+	if((rc = wait_on_lock_cond(c, bytes_ready)) != S_WAIT){
+		return rc;
 	}
 
 	if(verify(pthread_mutex_unlock(lag_lock),								

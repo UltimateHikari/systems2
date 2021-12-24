@@ -300,3 +300,7 @@ Cache *cache_free_marked(Cache *c){
 	c->marked = NULL;
 	return c;
 }
+
+int centry_mci_dead(Cache_entry* c){
+	return (c->master_connection_id == MCI_DEAD);
+}
