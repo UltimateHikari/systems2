@@ -139,6 +139,11 @@ enum State{
 #define CLIENT 'C'
 
 typedef struct{
+	char type;
+}Common_connection;
+
+
+typedef struct{
 	char type; // for type deducing, must be SERVER
 	int socket;
 	Cache_entry *entry;

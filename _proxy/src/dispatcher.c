@@ -290,6 +290,7 @@ int dispatcher_wait(Dispatcher *d){
 
 			if(twret == ETIMEDOUT){
 				LOG_INFO("timed out, dispatching anyway");
+				if(verify(pthread_mutex_unlock(dlock), "untry to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
 				return S_WAIT; // TODO: stub
 			}
 
@@ -302,18 +303,25 @@ int dispatcher_wait(Dispatcher *d){
 	return S_WAIT;
 }
 
+typedef void* (*fptr)(void*);
+
+fptr deduce_body(void *e){
+	Common_connection *c = (Common_connection*)e;
+	LOG_DEBUG("deducing: %c", c->type);
+	if(c->type == CLIENT){
+		return client_body;
+	}else{
+		return server_body;
+	}
+
+}
+
 int try_dispatch(D_entry *e, Worker *cur_wrk){
 	LOG_DEBUG("try-dispatch");
 	while(cur_wrk != NULL){
 		if(cur_wrk->state == Empty){
 			cur_wrk->arg = e->conn;
-			if(*((char*)(e->conn)) == CLIENT){
-				LOG_DEBUG("deduced client");
-				cur_wrk->body = client_body;
-			}else{
-				LOG_DEBUG("deduced server");
-				cur_wrk->body = server_body;
-			}
+			cur_wrk->body = deduce_body(e->conn);
 			cur_wrk->state = Working;
 			sem_post(&(cur_wrk->latch));
 			LOG_DEBUG("dispatched");
@@ -327,6 +335,7 @@ int try_dispatch(D_entry *e, Worker *cur_wrk){
 }
 
 int check_head_conn(Dispatcher *d){
+	LOG_DEBUG("check_head_conn");
 	void* arg = (void*)&d;
 	pthread_mutex_t *dlock = &(d->dpatch_lock);
 	int res = E_DISPATCH;
@@ -339,6 +348,7 @@ int check_head_conn(Dispatcher *d){
 }
 
 int remove_head_conn(Dispatcher *d){
+	LOG_DEBUG("remove-head-conn");
 	void* arg = (void*)&d;
 	pthread_mutex_t *dlock = &(d->dpatch_lock);
 	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};

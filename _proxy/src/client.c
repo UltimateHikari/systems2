@@ -58,6 +58,7 @@ int free_request(Request *r){
 
 Client_connection *init_connection(Dispatcher *d){
 	Client_connection *c = (Client_connection*)malloc(sizeof(Client_connection));
+	c->type = CLIENT;
 	c->socket = NO_SOCK;
 	c->cache = d->cache;
 	c->entry = NULL;

@@ -41,7 +41,7 @@ Server_Connection * server_init_connection(Client_connection * cl){
 	LOG_DEBUG("server_init_connection-call");
 	Server_Connection *c = (Server_Connection*)malloc(sizeof(Server_Connection));
 	cl->c = c;
-
+	c->type = SERVER;
 	c->socket = NO_SOCK;
 	c->entry = cl->entry;
 	if(server_connect(cl) < 0){
