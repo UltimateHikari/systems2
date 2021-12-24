@@ -88,6 +88,7 @@ Dispatcher *init_dispatcher(Cache *cache, int labclass){
 	res->isListenerAlive = 1;
 	res->head_conn = NULL;
 	res->last_conn = NULL;
+	res->isStale = IsStale;
 
 	void* arg = ((void*)&res);
 	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
@@ -249,6 +250,7 @@ int dispatcher_put(Dispatcher *d, void *conn){
 			d->last_conn = entr;
 		}
 	if(verify(pthread_cond_signal(&(d->dpatch_cond)), "put conn-signal", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+	d->isStale = Updated;
 	if(verify(pthread_mutex_unlock(&(d->dpatch_lock)), "put conn-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
 	return S_DISPATCH;
 }
@@ -265,6 +267,7 @@ void* worker_body(void *raw_worker){
 
 		void * res = w->body(w->arg);
 
+		w->state = Empty;
 		if(res != NULL){
 			dispatcher_put(w->d, res);
 		}
@@ -272,7 +275,101 @@ void* worker_body(void *raw_worker){
 	}
 	pthread_exit(NULL);
 }
+
+int dispatcher_wait(Dispatcher *d){
+	struct timespec ts;
+	pthread_mutex_t *dlock = &(d->dpatch_lock);
+	pthread_cond_t *dcond = &(d->dpatch_cond);
+	void* arg = (void*)&d;
+	if(verify(pthread_mutex_lock(dlock), "try to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
+		while (d->isStale == IsStale){
+			LOG_DEBUG("waiting for 1s");
+			clock_gettime(CLOCK_REALTIME, &ts);
+			ts.tv_sec += 1;
+			int twret = pthread_cond_timedwait(dcond, dlock, &ts);
+
+			if(twret == ETIMEDOUT){
+				LOG_INFO("timed out, dispatching anyway");
+				return S_WAIT; // TODO: stub
+			}
+
+			if(twret < 0){
+				dispatcher_cleanup(arg);
+				return E_WAIT;
+			}
+		}
+	if(verify(pthread_mutex_unlock(dlock), "untry to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
+	return S_WAIT;
+}
+
+int try_dispatch(D_entry *e, Worker *cur_wrk){
+	LOG_DEBUG("try-dispatch");
+	while(cur_wrk != NULL){
+		if(cur_wrk->state == Empty){
+			cur_wrk->arg = e->conn;
+			if(*((char*)(e->conn)) == CLIENT){
+				LOG_DEBUG("deduced client");
+				cur_wrk->body = client_body;
+			}else{
+				LOG_DEBUG("deduced server");
+				cur_wrk->body = server_body;
+			}
+			cur_wrk->state = Working;
+			sem_post(&(cur_wrk->latch));
+			LOG_DEBUG("dispatched");
+			return S_DISPATCH;
+		}else{
+			cur_wrk = cur_wrk->next;
+		}
+	}
+	LOG_DEBUG("out of workers");
+	return E_DISPATCH;
+}
+
+int check_head_conn(Dispatcher *d){
+	void* arg = (void*)&d;
+	pthread_mutex_t *dlock = &(d->dpatch_lock);
+	int res = E_DISPATCH;
+	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+		if(d->head_conn != NULL){
+			res = S_DISPATCH;
+		}
+	if(verify(pthread_mutex_unlock(dlock), "get ptrs-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+	return res;
+}
+
+int remove_head_conn(Dispatcher *d){
+	void* arg = (void*)&d;
+	pthread_mutex_t *dlock = &(d->dpatch_lock);
+	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+		D_entry *removed = d->head_conn;
+		d->head_conn = d->head_conn->next;
+	if(verify(pthread_mutex_unlock(dlock), "get ptrs-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+	destroy_entry(removed);
+	return S_DISPATCH;
+}
+
+void perform_match(Dispatcher *d){
+	LOG_DEBUG("perform-match");
+	while(check_head_conn(d) == S_DISPATCH && try_dispatch(d->head_conn, d->head_worker)){
+		remove_head_conn(d);
+	}
+}
+
 void* dispatcher_body(void *raw_dispatcher){
-	//TODO: stub
+	LOG_DEBUG("dispatcher-body");
+	RETURN_NULL_IF_NULL(raw_dispatcher);
+	Dispatcher *d = (Dispatcher*)raw_dispatcher;
+	void* arg = (void*)&d;
+
+	while (1){
+		check_panic(dispatcher_cleanup, arg);
+		if(dispatcher_wait(d) != S_WAIT){
+			//shouldnt happen but anyway
+			pthread_exit(NULL);
+		}
+		check_panic(dispatcher_cleanup, arg);
+		perform_match(d);
+	}
 	pthread_exit(NULL);
 }

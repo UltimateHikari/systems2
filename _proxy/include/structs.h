@@ -94,6 +94,11 @@ typedef struct D_entry{
 struct Worker;
 struct Dispatcher;
 
+enum Stale{
+	IsStale,
+	Updated
+};
+
 typedef struct{
 	int isListenerAlive;
 	Cache *cache;
@@ -105,6 +110,7 @@ typedef struct{
 	D_entry * head_conn;
 	D_entry * last_conn;
 	int labclass;
+	int isStale;
 } Dispatcher;
 
 enum WState{
@@ -129,7 +135,11 @@ enum State{
 	Done
 };
 
+#define SERVER 'S'
+#define CLIENT 'C'
+
 typedef struct{
+	char type; // for type deducing, must be SERVER
 	int socket;
 	Cache_entry *entry;
 	int state;
@@ -140,6 +150,7 @@ typedef struct{
 } Server_Connection;
 
 typedef struct{
+	char type; // for type deducing, must be CLIENT
 	int socket;
 	Cache *cache;
 	Cache_entry *entry;
