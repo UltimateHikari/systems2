@@ -126,6 +126,8 @@ typedef struct{
 	pthread_t threads[MAX_THREADS];
 	Client_connection * clhead;
 	Server_Connection * schead;
+	pthread_mutex_t dpatch_lock;
+	pthread_cond_t dpatch_cond;
 } Dispatcher;
 
 #endif

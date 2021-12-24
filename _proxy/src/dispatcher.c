@@ -45,21 +45,28 @@ void* dispatcher_cleanup(void * raw_dispatcher){
 }
 
 Dispatcher *init_dispatcher(Cache *cache){
-	Dispatcher *dispatcher = (Dispatcher*)malloc(sizeof(Dispatcher));
-	RETURN_NULL_IF_NULL(dispatcher);
-	dispatcher->cache = cache;
-	dispatcher->isListenerAlive = 1;
-	dispatcher->clhead = NULL;
-	dispatcher->schead = NULL;
-	return dispatcher;
+	Dispatcher *res = (Dispatcher*)malloc(sizeof(Dispatcher));
+	RETURN_NULL_IF_NULL(res);
+	res->cache = cache;
+	res->isListenerAlive = 1;
+	res->clhead = NULL;
+	res->schead = NULL;
+
+	void* arg = ((void*)&res);
+	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
+	verify(pthread_cond_init(&(res->dpatch_cond), NULL),  "dpatch_cond init", dispatcher_cleanup, arg);
+
+	return res;
 }
 
-int dispatcher_destroy(Dispatcher *dispatcher){
-	if(dispatcher == NULL){
+int dispatcher_destroy(Dispatcher *d){
+	if(d == NULL){
 		return E_DESTROY;
 	}
-	cache_destroy(dispatcher->cache);
-	free(dispatcher);
+	cache_destroy(d->cache);
+	pthread_mutex_destroy(&(d->dpatch_lock));
+	pthread_cond_destroy(&(d->dpatch_cond));
+	free(d);
 	return S_DESTROY;
 }
 

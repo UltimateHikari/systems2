@@ -74,7 +74,7 @@ Cache_entry * centry_init(size_t bytes_expected, Request *mdata, char *mime, int
 
 	void* arg = ((void*)&res);
 	verify(pthread_mutex_init(&(res->lag_lock), NULL), "l_lock init", centry_cleanup, arg);
-	verify(pthread_cond_init(&(res->lag_cond), NULL),  "l_cond init", cache_cleanup, arg);
+	verify(pthread_cond_init(&(res->lag_cond), NULL),  "l_cond init", centry_cleanup, arg);
 	return res;
 }
 
@@ -119,7 +119,6 @@ Chunk * centry_put(Cache_entry *c, char* buf, size_t buflen){
 	// TODO: if c->bytes_ready + buflen > bytes_excepted -> error or going to proxy mode;
 	if(buf != NULL){
 		// for puttring request;
-		// lag_signal expected afterwards
 		strncpy(chunk->data, buf, buflen);
 		chunk->size = buflen;
 		lag_broadcast(c, buflen);
@@ -133,16 +132,6 @@ Chunk * centry_pop(Cache_entry *c){
  	RETURN_NULL_IF_NULL(c);
 	return NULL;
 }
-
-// int centry_commit_read(Cache_entry *c, size_t buflen){
-// 	LOG_DEBUG("centry_commit");
-// 	if(verify(pthread_mutex_lock(&(c->lag_lock)), "centry put lock", NO_CLEANUP, NULL) < 0){ 
-// 		return E_COMMIT; 
-// 	};
-// 	c->bytes_ready += buflen;
-// 	verify(pthread_mutex_unlock(&(c->lag_lock)), "centry put unlock", NO_CLEANUP, NULL);
-// 	return S_COMMIT;
-// }
 
 int chunk_destroy(Chunk *c){
 	if(c == NULL){
@@ -302,5 +291,5 @@ Cache *cache_free_marked(Cache *c){
 }
 
 int centry_mci_dead(Cache_entry* c){
-	return (c->master_connection_id == MCI_DEAD);
+	return (c->master_connection_id == (size_t)MCI_DEAD);
 }

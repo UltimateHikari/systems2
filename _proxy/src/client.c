@@ -227,7 +227,7 @@ int wait_on_lock_cond(Client_connection *c, size_t *bytes_ready){
 			return S_WAIT;*/
 				LOG_INFO("actually no, Server_connection coming soon*");
 			}
-			return E_WAIT; // stub
+			return E_WAIT; // TODO: stub
 		}
 
 		if(twret < 0){
@@ -240,23 +240,21 @@ int wait_on_lock_cond(Client_connection *c, size_t *bytes_ready){
 
 int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 	LOG_DEBUG("wait-for-call");
-	pthread_mutex_t * lag_lock = &(c->entry->lag_lock);
-	pthread_cond_t * lag_cond = &(c->entry->lag_cond);
-	int rc;
 
-	if(verify(pthread_mutex_lock(lag_lock), 		
-		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};							
+	if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 		
+		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};	
+								
 	*bytes_ready = c->entry->bytes_ready;
 	
+	int rc;
 	if((rc = check_pointers_correctness(c, *bytes_ready, c->bytes_read)) != S_WAIT){
 		return rc;
 	}
-
 	if((rc = wait_on_lock_cond(c, bytes_ready)) != S_WAIT){
 		return rc;
 	}
 
-	if(verify(pthread_mutex_unlock(lag_lock),								
+	if(verify(pthread_mutex_unlock(&(c->entry->lag_lock)),								
 		"unlock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};
 	return S_WAIT;
 }
@@ -277,7 +275,6 @@ void * client_body(void *raw_struct){
 
 	void * arg = (void*)&c;
 	do{
-		//TODO uncheck himself
 		check_panic(client_cleanup, arg);
 		switch(c->state){
 			case Parse:
@@ -334,7 +331,6 @@ int client_read_n(Client_connection *c){
 	LOG_DEBUG("read_n-call");
 	// reads N chunks and returns
 	//get position to read
-	// TODO refactor to more constant reader registrarion; mb as function in cache
 	size_t bytes_ready;
 	if(wait_for_ready_bytes(c, &bytes_ready) != S_WAIT){
 		LOG_ERROR("cond_timedwait failed");
@@ -347,7 +343,7 @@ int client_read_n(Client_connection *c){
 		if(c->current == NULL){
 			init_current_chunk(c); // getting head;
 		} else {
-			c->current = c->current->next; //todo replace with on start of cycle
+			c->current = c->current->next;
 		}
 		if(c->current == NULL){ //still NULL == error
 			LOG_ERROR("chunks have less than bytes_ready - actual read");

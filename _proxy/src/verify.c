@@ -34,9 +34,9 @@ int verify_less(int rc){
 	return (rc < 0);
 }
 
-int verify_common(int rc, const char* action, void*(*free_resources)(void *), void *arg, int(*condition)(int)){
+int verify_common(int rc, int err, const char* action, void*(*free_resources)(void *), void *arg, int(*condition)(int)){
 	char err_buf[BUFLEN];
-	strerror_r(rc, err_buf, BUFLEN); //optional TODO switch with errno
+	strerror_r(err, err_buf, BUFLEN); //optional TODO switch with errno
 	if(condition(rc)){
 		LOG_ERROR("%s - %s", action, err_buf);
 		try_call(free_resources, arg);
@@ -46,10 +46,10 @@ int verify_common(int rc, const char* action, void*(*free_resources)(void *), vo
 }
 
 int verify(int rc, const char* action, void*(*free_resources)(void *), void *arg){
-	return verify_common(rc, action, free_resources, arg, verify_neq);
+	return verify_common(rc, rc, action, free_resources, arg, verify_neq);
 }
 
 //_e means errno 
 int verify_e(int rc, const char* action, void*(*free_resources)(void *), void *arg){
-	return verify_common(rc, action, free_resources, arg, verify_less);
+	return verify_common(rc, errno, action, free_resources, arg, verify_less);
 }
