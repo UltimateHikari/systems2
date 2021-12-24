@@ -3,7 +3,7 @@
 
 #define PARSE 0
 #define READ 1
-#define REQBUFSIZE 1024
+#define REQBUFSIZE 4096
 
 #define BE_INF 10*1024*1024
 #define MCI_ALIVE 1

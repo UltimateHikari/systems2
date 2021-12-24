@@ -177,29 +177,30 @@ Cache_entry * cache_garbage_collect(Cache *c, size_t bytes_to_collect){
 	Cache_entry *marked_last = NULL;
 
 	size_t bytes_collected = 0;
-	while(current != NULL && bytes_collected < bytes_to_collect){
-		Cache_entry *next = current->next;
-		if(is_eligible_to_collect(current)){
+	void*arg = (void*)&c;
+	if(verify(pthread_mutex_lock(&(c->structural_lock)), "collect start", cache_cleanup, arg) < 0){return NULL;};
+		while(current != NULL && bytes_collected < bytes_to_collect){
+			Cache_entry *next = current->next;
+			if(is_eligible_to_collect(current)){
+					c->current_expected_bytes = c->current_expected_bytes - current->bytes_expected;
 
-			c->current_expected_bytes = c->current_expected_bytes - current->bytes_expected;
+					if(previous != NULL){
+						previous->next = next;
+					}
+					if(marked_head == NULL){
+						marked_head = current;
+						marked_last = current;
+					}else{
+						marked_last->next = current;
+					}
+					current->next = NULL;
 
-			if(previous != NULL){
-				previous->next = next;
+			} else {
+				previous = current;
 			}
-			if(marked_head == NULL){
-				marked_head = current;
-				marked_last = current;
-			}else{
-				marked_last->next = current;
-			}
-			current->next = NULL;
-
-		} else {
-			previous = current;
+			current = next;
 		}
-		current = next;
-	}
-
+	if(verify(pthread_mutex_unlock(&(c->structural_lock)), "collect end", cache_cleanup, arg) < 0){return NULL;};
 	return marked_head;
 }
 
@@ -253,30 +254,29 @@ Cache_entry * cache_find(Cache * c, Request* mdata){
 	Cache_entry *current = c->head;
 
 	void*arg = (void*)&c;
-	if(verify(pthread_mutex_lock(&(c->structural_lock)), "find starting iter", cache_cleanup, arg) < 0){return NULL;};
-		// TODO critical section can be reduced with snapshotting?
-		// or collector should be kept out from ruining snapshot?
-		while(current !=  NULL){
-			if(mdata_is_equal(mdata, current->mdata)){
-				verify(pthread_mutex_unlock(&(c->structural_lock)), "found ending iter", cache_cleanup, (void*)c);
-				return current;
-			}
-			current = current->next;
+	while(current !=  NULL){
+		if(mdata_is_equal(mdata, current->mdata)){
+			return current;
 		}
-	if(verify(pthread_mutex_unlock(&(c->structural_lock)), "not found ending iter", cache_cleanup, arg) < 0){return NULL;};
+		if(verify(pthread_mutex_lock(&(c->structural_lock)), "find starting iter", cache_cleanup, arg) < 0){return NULL;};
+			current = current->next;
+		if(verify(pthread_mutex_unlock(&(c->structural_lock)), "not found ending iter", cache_cleanup, arg) < 0){return NULL;};
+
+	}
 	return NULL;
 }
 
 Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *mime, int mime_len){
 	LOG_DEBUG("cache_put-call");
 	Cache_entry * newentry = centry_init(bytes_expected, mdata, mime, mime_len);
-	bool is_nospace = false;
 
 	void*arg = (void*)&c;
+	if(cache_garbage_check(c, bytes_expected) == E_NOSPACE){
+		centry_destroy(newentry);
+		cache_free_marked(c);
+		return NULL;
+	}
 	if(verify(pthread_mutex_lock(&(c->structural_lock)), "adding entry", cache_cleanup, arg) < 0){return NULL;};
-		if(cache_garbage_check(c, bytes_expected) == E_NOSPACE){
-			is_nospace = true;
-		}
 		if(c->head == NULL){
 			c->head = newentry;
 			c->last = newentry;
@@ -288,12 +288,6 @@ Cache_entry * cache_put(Cache *c, size_t bytes_expected, Request *mdata, char *m
 	if(verify(pthread_mutex_unlock(&(c->structural_lock)), "adding entry", cache_cleanup, arg) < 0){return NULL;};
 
 	cache_free_marked(c);
-
-	if(is_nospace){
-		centry_destroy(newentry);
-		newentry = NULL;
-	}
-
 	return newentry;
 }
 
