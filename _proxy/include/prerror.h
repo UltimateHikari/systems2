@@ -44,6 +44,9 @@
 #define E_REG -1
 #define S_REG 1
 
+#define S_INIT 0
+#define E_INIT -1
+
 /**
  *
  * Control defines (mb migrate to params?)

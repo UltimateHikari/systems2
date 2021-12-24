@@ -17,6 +17,7 @@
 
 int dispatcher_spin_client_reader(Client_connection *sc);
 int dispatcher_destroy(Dispatcher *dispatcher);
+void* worker_body(void *raw_worker);
 
 void* listener_cleanup(void *raw_listener){
 	// dispatcher and existing connections can continue to listen
@@ -44,18 +45,29 @@ void* dispatcher_cleanup(void * raw_dispatcher){
 	pthread_exit(NULL); 
 }
 
+int init_workers(Dispatcher *d){
+	//TODO stub
+	return 0;
+}
+
+int destroy_workers(Dispatcher *d){
+	//TODO stub
+	return 0;
+}
+
 Dispatcher *init_dispatcher(Cache *cache){
 	Dispatcher *res = (Dispatcher*)malloc(sizeof(Dispatcher));
 	RETURN_NULL_IF_NULL(res);
 	res->cache = cache;
 	res->isListenerAlive = 1;
-	res->clhead = NULL;
-	res->schead = NULL;
+	res->head_conn = NULL;
+	res->last_conn = NULL;
 
 	void* arg = ((void*)&res);
 	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
 	verify(pthread_cond_init(&(res->dpatch_cond), NULL),  "dpatch_cond init", dispatcher_cleanup, arg);
 
+	verify(init_workers(res), "init workers", dispatcher_cleanup, arg);
 	return res;
 }
 
@@ -64,6 +76,7 @@ int dispatcher_destroy(Dispatcher *d){
 		return E_DESTROY;
 	}
 	cache_destroy(d->cache);
+	destroy_workers(d);
 	pthread_mutex_destroy(&(d->dpatch_lock));
 	pthread_cond_destroy(&(d->dpatch_cond));
 	free(d);
@@ -135,7 +148,7 @@ void join_threads(Dispatcher *d){
 int dispatcher_spin_server_reader(Server_Connection *sc){
 	LOG_DEBUG("dispatcher_spin_server_reader");
 	int labclass = sc->labclass;
-	Dispatcher *d = (Dispatcher *)sc->d;
+	Dispatcher *d = sc->d;
 	void* arg = (void*)&d;
 	if(labclass == MTCLASS){
 		if(d->num_threads >= MAX_THREADS){
@@ -155,7 +168,7 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 int dispatcher_spin_client_reader(Client_connection *cc){
 	LOG_DEBUG("dispatcher_spin_server_reader");
 	int labclass = cc->labclass;
-	Dispatcher *d = (Dispatcher *)cc->d;
+	Dispatcher *d = cc->d;
 	void* arg = (void*)&d;
 	if(labclass == MTCLASS){
 		if(d->num_threads >= MAX_THREADS){

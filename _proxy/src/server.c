@@ -344,8 +344,5 @@ void * server_body(void *raw_struct){
 		}
 	}while(!freed && labclass == MTCLASS);
 
-	if(labclass == WTCLASS){
-		// put in pending
-	}
 	return NULL;
 }

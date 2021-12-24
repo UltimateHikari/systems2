@@ -243,7 +243,7 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 
 	if(verify(pthread_mutex_lock(&(c->entry->lag_lock)), 		
 		"lock for wait", NO_CLEANUP, NULL) < 0){return E_WAIT;};	
-								
+
 	*bytes_ready = c->entry->bytes_ready;
 	
 	int rc;
@@ -298,9 +298,6 @@ void * client_body(void *raw_struct){
 		}
 	} while(!freed && labclass == MTCLASS);
 
-	if(labclass == WTCLASS){
-		//TODO: put ourselves into pending list;
-	}
 	return NULL; // implicit pthread_exit(NULL) if thread body
 }
 

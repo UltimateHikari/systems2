@@ -1,5 +1,6 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
+#include <semaphore.h>
 
 #define PARSE 0
 #define READ 1
@@ -82,6 +83,30 @@ typedef struct {
 	Cache_entry *marked;
 } Cache;
 
+enum WState{
+	Working,
+	Empty
+};
+
+typedef struct Worker{
+	int state; 
+	sem_t latch; // enables to handle body one more time
+	void* (*body)(void*);
+	struct Worker *next;
+}Worker;
+
+typedef struct{
+	int isListenerAlive;
+	Cache *cache;
+	int num_threads;
+	pthread_t threads[MAX_THREADS];
+	pthread_mutex_t dpatch_lock;
+	pthread_cond_t dpatch_cond;
+	Worker * head_worker;
+	void * head_conn;
+	void * last_conn;
+} Dispatcher;
+
 enum State{
 	Parse,
 	Read, // from cache for client and to cache for server
@@ -96,7 +121,7 @@ typedef struct{
 	int labclass;
 	char buf[REQBUFSIZE];
 	size_t buflen;
-	void *d;
+	Dispatcher *d;
 	size_t debug_chunk_number;
 } Server_Connection;
 
@@ -109,7 +134,7 @@ typedef struct{
 	int labclass;
 	size_t bytes_read;
 	Server_Connection *c;
-	void *d;
+	Dispatcher *d;
 	Chunk *current;
 	int is_registered;
 	size_t debug_chunk_number;
@@ -118,16 +143,5 @@ typedef struct{
 typedef struct{
 	int socket;
 } Listener;
-
-typedef struct{
-	int isListenerAlive;
-	Cache *cache;
-	int num_threads;
-	pthread_t threads[MAX_THREADS];
-	Client_connection * clhead;
-	Server_Connection * schead;
-	pthread_mutex_t dpatch_lock;
-	pthread_cond_t dpatch_cond;
-} Dispatcher;
 
 #endif
