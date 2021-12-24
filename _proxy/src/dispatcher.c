@@ -18,6 +18,10 @@
 int dispatcher_spin_client_reader(Client_connection *sc);
 int dispatcher_destroy(Dispatcher *dispatcher);
 void* worker_body(void *raw_worker);
+void* dispatcher_body(void *raw_dispatcher);
+int dispatcher_put(Dispatcher *d, void *conn);
+int init_workers(Dispatcher *d);
+int destroy_workers(Dispatcher *d);
 
 void* listener_cleanup(void *raw_listener){
 	// dispatcher and existing connections can continue to listen
@@ -38,20 +42,41 @@ void* dispatcher_cleanup(void * raw_dispatcher){
 	LOG_INFO("dispatcher_cleanup");
 	panic_signal();
 	PRETURN_NULL_IF_NULL(raw_dispatcher);
-	Dispatcher ** dispatcher = (Dispatcher**)raw_dispatcher;
-	PRETURN_NULL_IF_NULL(*dispatcher);
-	dispatcher_destroy(*dispatcher);
-	*dispatcher = NULL;
+	Dispatcher ** d = (Dispatcher**)raw_dispatcher;
+	PRETURN_NULL_IF_NULL(*d);
+	destroy_workers(*d);
+	dispatcher_destroy(*d);
+	*d = NULL;
 	pthread_exit(NULL); 
 }
 
 int init_workers(Dispatcher *d){
-	//TODO stub
-	return 0;
+	for(int i = 0; i < WORKERS_AMOUNT; i++){
+		Worker * res = (Worker*)calloc(1, sizeof(Worker));
+		res->state = Empty;
+		res->d = d;
+		sem_init(&(res->latch), 0, 0);	
+		if(d->head_worker == NULL){
+			d->head_worker = res;
+		}else{
+			res->next = d->head_worker;
+			d->head_worker = res;
+		}
+		if(pthread_create(&(res->thread), NULL, worker_body,res) < 0){
+			return E_INIT;
+		}
+	}
+	return S_INIT;
 }
 
 int destroy_workers(Dispatcher *d){
-	//TODO stub
+	Worker *cur = d->head_worker;
+	while(cur != NULL){
+		pthread_join(cur->thread, NULL); //those pesky semaphores
+		sem_destroy(&(cur->latch));
+		free(cur);
+		cur = cur->next;
+	}
 	return 0;
 }
 
@@ -68,7 +93,11 @@ Dispatcher *init_dispatcher(Cache *cache, int labclass){
 	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
 	verify(pthread_cond_init(&(res->dpatch_cond), NULL),  "dpatch_cond init", dispatcher_cleanup, arg);
 
-	verify(init_workers(res), "init workers", dispatcher_cleanup, arg);
+	pthread_t unused;
+	if(labclass == WTCLASS){
+		verify(init_workers(res), "init workers", dispatcher_cleanup, arg);
+		verify(pthread_create(&unused, NULL, dispatcher_body, res), "init thread", dispatcher_cleanup, arg);
+	}
 	return res;
 }
 
@@ -77,6 +106,7 @@ int dispatcher_destroy(Dispatcher *d){
 		return E_DESTROY;
 	}
 	cache_destroy(d->cache);
+	panic_signal(); // dispatcher is key part
 	destroy_workers(d);
 	pthread_mutex_destroy(&(d->dpatch_lock));
 	pthread_cond_destroy(&(d->dpatch_cond));
@@ -160,8 +190,8 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 				"create server", dispatcher_cleanup, arg);
 		d->num_threads++;
 	}
-	if(d->labclass == WTCLASS){
-		// TODO: put into queue & signal for dispatcher cond variable
+	if(d->labclass == WTCLASS && dispatcher_put(d, (void*)sc) != S_DISPATCH){
+		return E_DISPATCH;
 	}
 	return S_DISPATCH;
 }
@@ -179,8 +209,70 @@ int dispatcher_spin_client_reader(Client_connection *cc){
 				"create client", dispatcher_cleanup, arg);
 		d->num_threads++;
 	}
-	if(d->labclass == WTCLASS){
-		// TODO: put into queue & signal for dispatcher cond variable
+	if(d->labclass == WTCLASS && dispatcher_put(d, (void*)cc) != S_DISPATCH){
+		return E_DISPATCH;
 	}
 	return S_DISPATCH;
+}
+
+D_entry *make_entry(void *conn){
+	D_entry *res = (D_entry*)malloc(sizeof(D_entry));
+	RETURN_NULL_IF_NULL(res);
+	res->conn = conn;
+	res->next = NULL;
+	return res;
+}
+
+int destroy_entry(D_entry *d){
+	if(d == NULL){
+		return E_DESTROY;
+	}
+	free(d);
+	return S_DESTROY;
+}
+
+int dispatcher_put(Dispatcher *d, void *conn){
+	LOG_DEBUG("dispatcher-put");
+	void* arg = (void*)&d;
+	D_entry *entr = make_entry(conn);
+	if(entr == NULL){
+		LOG_DEBUG("entry not allocated");
+		return E_DISPATCH;
+	}
+
+	if(verify(pthread_mutex_lock(&(d->dpatch_lock)), "put conn-lock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+		if(d->head_conn == NULL){
+			d->head_conn = entr;
+			d->last_conn = entr;
+		}else{
+			d->last_conn->next = entr;
+			d->last_conn = entr;
+		}
+	if(verify(pthread_cond_signal(&(d->dpatch_cond)), "put conn-signal", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+	if(verify(pthread_mutex_unlock(&(d->dpatch_lock)), "put conn-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+	return S_DISPATCH;
+}
+
+
+void* worker_body(void *raw_worker){
+	LOG_DEBUG("worker_body");
+	RETURN_NULL_IF_NULL(raw_worker);
+	Worker *w = (Worker*)raw_worker;
+
+	while(1){
+		sem_wait(&(w->latch));
+		check_panic(NO_CLEANUP, NULL); // all is covered by dispatcher
+
+		void * res = w->body(w->arg);
+
+		if(res != NULL){
+			dispatcher_put(w->d, res);
+		}
+
+	}
+	pthread_exit(NULL);
+}
+void* dispatcher_body(void *raw_dispatcher){
+	//TODO: stub
+	pthread_exit(NULL);
 }

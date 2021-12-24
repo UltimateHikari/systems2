@@ -4,13 +4,16 @@
 
 #define PARSE 0
 #define READ 1
-#define REQBUFSIZE 4096
 
 #define BE_INF 10*1024*1024
 #define MCI_ALIVE 1
 #define MCI_DEAD -1
 #define MCI_DONE 0
+
+//TODO move this block into config too;
+#define REQBUFSIZE 4096
 #define MAX_THREADS 100
+#define WORKERS_AMOUNT 2 
 
 /**
  * CacheEntries forming linked list
@@ -83,17 +86,13 @@ typedef struct {
 	Cache_entry *marked;
 } Cache;
 
-enum WState{
-	Working,
-	Empty
-};
+typedef struct D_entry{
+	void *conn;
+	struct D_entry *next;
+}D_entry;
 
-typedef struct Worker{
-	int state; 
-	sem_t latch; // enables to handle body one more time
-	void* (*body)(void*);
-	struct Worker *next;
-}Worker;
+struct Worker;
+struct Dispatcher;
 
 typedef struct{
 	int isListenerAlive;
@@ -102,11 +101,26 @@ typedef struct{
 	pthread_t threads[MAX_THREADS];
 	pthread_mutex_t dpatch_lock;
 	pthread_cond_t dpatch_cond;
-	Worker * head_worker;
-	void * head_conn;
-	void * last_conn;
+	struct Worker * head_worker;
+	D_entry * head_conn;
+	D_entry * last_conn;
 	int labclass;
 } Dispatcher;
+
+enum WState{
+	Working,
+	Empty
+};
+
+typedef struct Worker{
+	int state; 
+	sem_t latch; // enables to handle body one more time
+	void *arg; // client or server connection;
+	void* (*body)(void*);
+	pthread_t thread;
+	struct Worker *next;
+	Dispatcher *d;
+}Worker;
 
 enum State{
 	Parse,

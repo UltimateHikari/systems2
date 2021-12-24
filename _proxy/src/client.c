@@ -258,10 +258,6 @@ int wait_for_ready_bytes(Client_connection *c, size_t *bytes_ready){
 	return S_WAIT;
 }
 
-#define BODY_FREE_CONNECTION							\
-				free_connection(c);						\
-				freed = 1;
-
 void * client_body(void *raw_struct){
 	LOG_DEBUG("client_body-call");
 	// universal thread body
@@ -270,7 +266,7 @@ void * client_body(void *raw_struct){
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
-	int freed = 0, labclass = c->d->labclass;
+	int labclass = c->d->labclass;
 
 	void * arg = (void*)&c;
 	do{
@@ -278,26 +274,30 @@ void * client_body(void *raw_struct){
 		switch(c->state){
 			case Parse:
 				if(client_register(c) != S_SEND){
-					BODY_FREE_CONNECTION;
+					free_connection(c);
+					return NULL;
 				}
 				break;
 			case Read:
 				if(client_read_n(c) != S_SEND){
-					BODY_FREE_CONNECTION;
+					free_connection(c);
+					return NULL;
 				}
 				break;
 			case Proxy:
 				if(client_proxy_n(c) != S_SEND){
-					BODY_FREE_CONNECTION;
+					free_connection(c);
+					return NULL;
 				}
 				break;
 			default:
 				// if smh scheduled as done
-				BODY_FREE_CONNECTION;
+				free_connection(c);
+				return NULL;
 		}
-	} while(!freed && labclass == MTCLASS);
+	} while(labclass == MTCLASS);
 
-	return NULL; // implicit pthread_exit(NULL) if thread body
+	return raw_struct;
 }
 
 int client_register(Client_connection *c){

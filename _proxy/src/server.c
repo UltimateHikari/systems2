@@ -315,13 +315,11 @@ int server_destroy_connection(Server_Connection *sc){
 
 void * server_body(void *raw_struct){
 	LOG_DEBUG("server_body-call");
-	
-	if(raw_struct == NULL){
-		return NULL;
-	}
+	RETURN_NULL_IF_NULL(raw_struct);
+
 	Server_Connection *sc = (Server_Connection *)raw_struct;
 
-	int freed = 0, labclass = sc->d->labclass;
+	int labclass = sc->d->labclass;
 	void * arg = (void*)&sc;
 	do{
 		check_panic(server_cleanup, arg);
@@ -329,19 +327,16 @@ void * server_body(void *raw_struct){
 			case Read:
 				if(server_read_n(sc) != S_READ){
 					LOG_ERROR("body freeing on error");
-					sc->state = Done;
 					server_destroy_connection(sc);
-					freed = 1;
+					return NULL;
 				}
 				break;
 			default:
 				LOG_INFO("freeing connection");
-				sc->state = Done;
 				server_destroy_connection(sc);
-				freed = 1;
-				break;
+				return NULL;
 		}
-	}while(!freed && labclass == MTCLASS);
+	}while(labclass == MTCLASS);
 
-	return NULL;
+	return raw_struct;
 }
