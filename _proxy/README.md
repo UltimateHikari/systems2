@@ -11,7 +11,12 @@
 
     Прокси должен корректно обрабатывать сброс клиентских сессий. В том числе, в случае, когда две или более сессий работали с одной записью кэша, после сброса одной из них, остальные сессии должны корректно продолжить докачку страницы.
 
+## Scheme:
+![scheme](res/2021-12-24_181340.png)
+
 ### TODOs:
+* sort out errors, delete that ugly define-ball
+    * pass more with config
 * restart of spontaniously dead server_connection by timeout from `client_connection::wait_on_lock_cond`
     * not required by task and is hard to test
 * handle requests without content-length better
@@ -20,3 +25,5 @@
 * better `Cache::eligible_to_collect` check, doesnt check server_connection state
     * nothing huge, prob just causes random NULL error in server, when could stop gracefully
 * potentially make `server_connection::lag_broadcast` not void, for error checks
+
+
