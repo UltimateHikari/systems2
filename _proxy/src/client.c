@@ -56,14 +56,13 @@ int free_request(Request *r){
 	return S_DESTROY;
 }
 
-Client_connection *init_connection(int class, Dispatcher *d){
+Client_connection *init_connection(Dispatcher *d){
 	Client_connection *c = (Client_connection*)malloc(sizeof(Client_connection));
 	c->socket = NO_SOCK;
 	c->cache = d->cache;
 	c->entry = NULL;
 	c->request = NULL;
 	c->state = Parse;
-	c->labclass = class;
 	c->bytes_read = 0;
 	c->c = NULL;
 	c->d = (void*)d;
@@ -271,7 +270,7 @@ void * client_body(void *raw_struct){
 	}
 	Client_connection *c = (Client_connection*) raw_struct;
 
-	int freed = 0, labclass = c->labclass;
+	int freed = 0, labclass = c->d->labclass;
 
 	void * arg = (void*)&c;
 	do{

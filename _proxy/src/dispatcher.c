@@ -55,9 +55,10 @@ int destroy_workers(Dispatcher *d){
 	return 0;
 }
 
-Dispatcher *init_dispatcher(Cache *cache){
+Dispatcher *init_dispatcher(Cache *cache, int labclass){
 	Dispatcher *res = (Dispatcher*)malloc(sizeof(Dispatcher));
 	RETURN_NULL_IF_NULL(res);
+	res->labclass = labclass;
 	res->cache = cache;
 	res->isListenerAlive = 1;
 	res->head_conn = NULL;
@@ -108,7 +109,8 @@ Listener* init_listener(int listener_port){
 	return listener;
 }
 
-int spin_listener(Listener *listener){
+int spin_listener(Listener *listener, int labclass){
+	LOG_INFO("Started spinning %d-class proxy:", labclass);
 	LOG_INFO("Spinning cache...");
 	Cache *cache = cache_init();
 	if(cache == NULL){
@@ -117,7 +119,7 @@ int spin_listener(Listener *listener){
 	}
 
 	LOG_INFO("Spinning server...");
-	Dispatcher *dispatcher = init_dispatcher(cache);
+	Dispatcher *dispatcher = init_dispatcher(cache, labclass);
 	if(dispatcher == NULL){
 		LOG_ERROR("cannot init dispatcher, exiting");
 		cache_destroy(cache);
@@ -127,7 +129,7 @@ int spin_listener(Listener *listener){
 	void* arg = (void*)&listener;
 	while(1){
 		check_panic(listener_cleanup, arg);
-		Client_connection *cc = init_connection(MTCLASS, dispatcher);
+		Client_connection *cc = init_connection(dispatcher);
 		cc->socket = verify_e(accept(listener->socket, NO_ADDR, NO_ADDR),
 				"ssock accept", listener_cleanup, arg);
 		LOG_INFO("accepted %d", cc->socket);
@@ -147,10 +149,9 @@ void join_threads(Dispatcher *d){
 
 int dispatcher_spin_server_reader(Server_Connection *sc){
 	LOG_DEBUG("dispatcher_spin_server_reader");
-	int labclass = sc->labclass;
 	Dispatcher *d = sc->d;
 	void* arg = (void*)&d;
-	if(labclass == MTCLASS){
+	if(d->labclass == MTCLASS){
 		if(d->num_threads >= MAX_THREADS){
 			return E_DISPATCH;
 		}
@@ -159,7 +160,7 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 				"create server", dispatcher_cleanup, arg);
 		d->num_threads++;
 	}
-	if(labclass == WTCLASS){
+	if(d->labclass == WTCLASS){
 		// TODO: put into queue & signal for dispatcher cond variable
 	}
 	return S_DISPATCH;
@@ -167,10 +168,9 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 
 int dispatcher_spin_client_reader(Client_connection *cc){
 	LOG_DEBUG("dispatcher_spin_server_reader");
-	int labclass = cc->labclass;
 	Dispatcher *d = cc->d;
 	void* arg = (void*)&d;
-	if(labclass == MTCLASS){
+	if(d->labclass == MTCLASS){
 		if(d->num_threads >= MAX_THREADS){
 			return E_DISPATCH;
 		}
@@ -179,7 +179,7 @@ int dispatcher_spin_client_reader(Client_connection *cc){
 				"create client", dispatcher_cleanup, arg);
 		d->num_threads++;
 	}
-	if(labclass == WTCLASS){
+	if(d->labclass == WTCLASS){
 		// TODO: put into queue & signal for dispatcher cond variable
 	}
 	return S_DISPATCH;

@@ -3,7 +3,7 @@
 #define BACKLOG 500
 
 Listener * init_listener(int listener_port);
-int spin_listener(Listener *Listener);
+int spin_listener(Listener *Listener, int class);
 void join_threads();
 
 int dispatcher_spin_server_reader(Server_Connection *sc);

@@ -13,7 +13,7 @@
 Request *make_request();
 int free_request(Request *r);
 
-Client_connection *init_connection();
+Client_connection *init_connection(Dispatcher *d);
 int free_connection(Client_connection *c);
 
 void * client_body(void *raw_struct);

@@ -105,6 +105,7 @@ typedef struct{
 	Worker * head_worker;
 	void * head_conn;
 	void * last_conn;
+	int labclass;
 } Dispatcher;
 
 enum State{
@@ -118,7 +119,6 @@ typedef struct{
 	int socket;
 	Cache_entry *entry;
 	int state;
-	int labclass;
 	char buf[REQBUFSIZE];
 	size_t buflen;
 	Dispatcher *d;
@@ -131,7 +131,6 @@ typedef struct{
 	Cache_entry *entry;
 	Request *request;
 	int state;
-	int labclass;
 	size_t bytes_read;
 	Server_Connection *c;
 	Dispatcher *d;

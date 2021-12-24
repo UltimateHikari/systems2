@@ -50,7 +50,6 @@ Server_Connection * server_init_connection(Client_connection * cl){
 		return NULL;
 	}
 	c->state = Parse;
-	c->labclass = cl->labclass;
 	c->buflen = E_COMPARE;
 	c->d = cl->d;
 	return c;
@@ -322,7 +321,7 @@ void * server_body(void *raw_struct){
 	}
 	Server_Connection *sc = (Server_Connection *)raw_struct;
 
-	int freed = 0, labclass = sc->labclass;
+	int freed = 0, labclass = sc->d->labclass;
 	void * arg = (void*)&sc;
 	do{
 		check_panic(server_cleanup, arg);
