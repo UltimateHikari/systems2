@@ -44,7 +44,6 @@ void* dispatcher_cleanup(void * raw_dispatcher){
 	PRETURN_NULL_IF_NULL(raw_dispatcher);
 	Dispatcher ** d = (Dispatcher**)raw_dispatcher;
 	PRETURN_NULL_IF_NULL(*d);
-	destroy_workers(*d);
 	dispatcher_destroy(*d);
 	*d = NULL;
 	pthread_exit(NULL); 
@@ -54,6 +53,7 @@ int init_workers(Dispatcher *d){
 	for(int i = 0; i < WORKERS_AMOUNT; i++){
 		Worker * res = (Worker*)calloc(1, sizeof(Worker));
 		res->state = Empty;
+		res->next = NULL;
 		res->d = d;
 		sem_init(&(res->latch), 0, 0);	
 		if(d->head_worker == NULL){
@@ -70,14 +70,17 @@ int init_workers(Dispatcher *d){
 }
 
 int destroy_workers(Dispatcher *d){
+	LOG_DEBUG("destroy worker");
 	Worker *cur = d->head_worker;
 	while(cur != NULL){
+		LOG_DEBUG("destroying worker %p..", cur);
 		pthread_join(cur->thread, NULL); //those pesky semaphores
 		sem_destroy(&(cur->latch));
 		free(cur);
 		cur = cur->next;
 	}
-	return 0;
+	d->head_worker = NULL;
+	return E_DESTROY;
 }
 
 Dispatcher *init_dispatcher(Cache *cache, int labclass){
@@ -88,6 +91,7 @@ Dispatcher *init_dispatcher(Cache *cache, int labclass){
 	res->isListenerAlive = 1;
 	res->head_conn = NULL;
 	res->last_conn = NULL;
+	res->head_worker = NULL;
 
 	void* arg = ((void*)&res);
 	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
@@ -261,6 +265,7 @@ void* worker_body(void *raw_worker){
 
 	void * arg = (void *)&(w->d);
 	while(1){
+		check_panic(NO_CLEANUP, NULL);
 		LOG_DEBUG("sem_waiting for 1s");
 		clock_gettime(CLOCK_REALTIME, &ts);
 		ts.tv_sec += 1;
@@ -359,6 +364,9 @@ int remove_head_conn(Dispatcher *d){
 	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
 		D_entry *removed = d->head_conn;
 		d->head_conn = d->head_conn->next;
+		if(d->head_conn == NULL){
+			d->last_conn = NULL;
+		}
 	if(verify(pthread_mutex_unlock(dlock), "get ptrs-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
 	destroy_entry(removed);
 	return S_DISPATCH;
