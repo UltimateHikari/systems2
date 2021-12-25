@@ -196,6 +196,7 @@ int dispatcher_spin_server_reader(Server_Connection *sc){
 	if(d->labclass == WTCLASS && dispatcher_put(d, (void*)sc) != S_DISPATCH){
 		return E_DISPATCH;
 	}
+	LOG_INFO("dispatched server");
 	return S_DISPATCH;
 }
 
@@ -215,6 +216,7 @@ int dispatcher_spin_client_reader(Client_connection *cc){
 	if(d->labclass == WTCLASS && dispatcher_put(d, (void*)cc) != S_DISPATCH){
 		return E_DISPATCH;
 	}
+	LOG_INFO("dispatched client");
 	return S_DISPATCH;
 }
 
@@ -266,13 +268,13 @@ void* worker_body(void *raw_worker){
 	void * arg = (void *)&(w->d);
 	while(1){
 		check_panic(NO_CLEANUP, NULL);
-		LOG_DEBUG("sem_waiting for 1s");
+		LOG_TRACE("sem_waiting for 1s");
 		clock_gettime(CLOCK_REALTIME, &ts);
 		ts.tv_sec += 1;
 
 		if(sem_timedwait(&(w->latch), &ts) < 0){
 			if(errno == ETIMEDOUT){
-				LOG_INFO("timed out, restarting iteration");
+				LOG_TRACE("timed out, restarting iteration");
 				continue;
 			}
 			LOG_ERROR("sem wait error");
@@ -292,18 +294,27 @@ void* worker_body(void *raw_worker){
 	pthread_exit(NULL);
 }
 
+void log_connections(Dispatcher *d){
+	D_entry * e = d->head_conn;
+	LOG_DEBUG("log-connections");
+	while(e != NULL){
+		LOG_DEBUG("connection %p", e->conn);
+		e = e->next;
+	}
+}
+
 int dispatcher_wait(Dispatcher *d){
 	struct timespec ts;
 	sem_t *staleness = &(d->staleness);
 	void* arg = (void*)&d;
 
-	LOG_DEBUG("sem_waiting for 1s");
+	LOG_TRACE("sem_waiting for 1s");
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += 1;
 
 	if(sem_timedwait(staleness, &ts) < 0){
 		if(errno == ETIMEDOUT){
-			LOG_INFO("timed out, dispatching anyway");
+			LOG_TRACE("timed out, dispatching anyway");
 			return S_WAIT;
 		}
 		LOG_ERROR("sem wait error");
@@ -350,6 +361,7 @@ int check_head_conn(Dispatcher *d){
 	pthread_mutex_t *dlock = &(d->dpatch_lock);
 	int res = E_DISPATCH;
 	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
+		log_connections(d);
 		if(d->head_conn != NULL){
 			res = S_DISPATCH;
 		}
@@ -374,7 +386,9 @@ int remove_head_conn(Dispatcher *d){
 
 void perform_match(Dispatcher *d){
 	LOG_DEBUG("perform-match");
-	while(check_head_conn(d) == S_DISPATCH && try_dispatch(d->head_conn, d->head_worker)){
+	// in memory of stupidiest error ever - forgot to compare try_dispatch with S_DISPATCH
+	// E = -1, S = 1 so all extra connections were simply removed xd
+	while(check_head_conn(d) == S_DISPATCH && try_dispatch(d->head_conn, d->head_worker) == S_DISPATCH){ 
 		remove_head_conn(d);
 	}
 }

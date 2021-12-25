@@ -227,7 +227,7 @@ int wait_on_lock_cond(Client_connection *c, size_t *bytes_ready){
 			return S_WAIT;*/
 				LOG_INFO("actually no, Server_connection coming soon*");
 			}
-			return E_WAIT; // TODO: stub
+			return S_WAIT; // TODO: stub
 		}
 
 		if(twret < 0){
@@ -357,7 +357,7 @@ int client_read_n(Client_connection *c){
 			return E_SEND;
 		}
 	}
-	LOG_INFO("sent %d bytes, now %d", (c->bytes_read - bytes_read_before), c->bytes_read);
+	LOG_DEBUG("sent %d bytes, now %d", (c->bytes_read - bytes_read_before), c->bytes_read);
 	return check_if_done(c);
 }
 

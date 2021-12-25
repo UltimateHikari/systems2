@@ -45,7 +45,7 @@ int main(int argc, char** argv){
 	init_signal();
 
 	logger_initConsoleLogger(stderr);
-	logger_setLevel(LogLevel_DEBUG);
+	logger_setLevel(LogLevel_INFO);
 
 	if((listener = init_listener(init_port(argc, argv))) != NULL){
 		spin_listener(listener, init_class(argc, argv));
