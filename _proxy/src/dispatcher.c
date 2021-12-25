@@ -361,7 +361,7 @@ int check_head_conn(Dispatcher *d){
 	pthread_mutex_t *dlock = &(d->dpatch_lock);
 	int res = E_DISPATCH;
 	if(verify(pthread_mutex_lock(dlock), "get ptrs", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
-		log_connections(d);
+		//log_connections(d);
 		if(d->head_conn != NULL){
 			res = S_DISPATCH;
 		}
