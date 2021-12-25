@@ -105,12 +105,11 @@ typedef struct{
 	int num_threads;
 	pthread_t threads[MAX_THREADS];
 	pthread_mutex_t dpatch_lock;
-	pthread_cond_t dpatch_cond;
+	sem_t staleness;
 	struct Worker * head_worker;
 	D_entry * head_conn;
 	D_entry * last_conn;
 	int labclass;
-	int isStale;
 } Dispatcher;
 
 enum WState{

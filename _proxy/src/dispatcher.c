@@ -88,12 +88,10 @@ Dispatcher *init_dispatcher(Cache *cache, int labclass){
 	res->isListenerAlive = 1;
 	res->head_conn = NULL;
 	res->last_conn = NULL;
-	res->isStale = IsStale;
 
 	void* arg = ((void*)&res);
 	verify(pthread_mutex_init(&(res->dpatch_lock), NULL), "dpatch_lock init", dispatcher_cleanup, arg);
-	verify(pthread_cond_init(&(res->dpatch_cond), NULL),  "dpatch_cond init", dispatcher_cleanup, arg);
-
+	sem_init(&(res->staleness), 0, 0);
 	pthread_t unused;
 	if(labclass == WTCLASS){
 		verify(init_workers(res), "init workers", dispatcher_cleanup, arg);
@@ -110,7 +108,7 @@ int dispatcher_destroy(Dispatcher *d){
 	panic_signal(); // dispatcher is key part
 	destroy_workers(d);
 	pthread_mutex_destroy(&(d->dpatch_lock));
-	pthread_cond_destroy(&(d->dpatch_cond));
+	sem_destroy(&(d->staleness));
 	free(d);
 	return S_DESTROY;
 }
@@ -249,20 +247,33 @@ int dispatcher_put(Dispatcher *d, void *conn){
 			d->last_conn->next = entr;
 			d->last_conn = entr;
 		}
-	if(verify(pthread_cond_signal(&(d->dpatch_cond)), "put conn-signal", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
-	d->isStale = Updated;
+	sem_post(&(d->staleness));
 	if(verify(pthread_mutex_unlock(&(d->dpatch_lock)), "put conn-unlock", dispatcher_cleanup, arg) < 0){return E_DISPATCH;};
 	return S_DISPATCH;
 }
 
 
 void* worker_body(void *raw_worker){
+	struct timespec ts;
 	LOG_DEBUG("worker_body");
 	RETURN_NULL_IF_NULL(raw_worker);
 	Worker *w = (Worker*)raw_worker;
 
+	void * arg = (void *)&(w->d);
 	while(1){
-		sem_wait(&(w->latch));
+		LOG_DEBUG("sem_waiting for 1s");
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += 1;
+
+		if(sem_timedwait(&(w->latch), &ts) < 0){
+			if(errno == ETIMEDOUT){
+				LOG_INFO("timed out, restarting iteration");
+				continue;
+			}
+			LOG_ERROR("sem wait error");
+			dispatcher_cleanup(arg);
+			pthread_exit(NULL);
+		}
 		check_panic(NO_CLEANUP, NULL); // all is covered by dispatcher
 
 		void * res = w->body(w->arg);
@@ -278,28 +289,22 @@ void* worker_body(void *raw_worker){
 
 int dispatcher_wait(Dispatcher *d){
 	struct timespec ts;
-	pthread_mutex_t *dlock = &(d->dpatch_lock);
-	pthread_cond_t *dcond = &(d->dpatch_cond);
+	sem_t *staleness = &(d->staleness);
 	void* arg = (void*)&d;
-	if(verify(pthread_mutex_lock(dlock), "try to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
-		while (d->isStale == IsStale){
-			LOG_DEBUG("waiting for 1s");
-			clock_gettime(CLOCK_REALTIME, &ts);
-			ts.tv_sec += 1;
-			int twret = pthread_cond_timedwait(dcond, dlock, &ts);
 
-			if(twret == ETIMEDOUT){
-				LOG_INFO("timed out, dispatching anyway");
-				if(verify(pthread_mutex_unlock(dlock), "untry to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
-				return S_WAIT; // TODO: stub
-			}
+	LOG_DEBUG("sem_waiting for 1s");
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += 1;
 
-			if(twret < 0){
-				dispatcher_cleanup(arg);
-				return E_WAIT;
-			}
+	if(sem_timedwait(staleness, &ts) < 0){
+		if(errno == ETIMEDOUT){
+			LOG_INFO("timed out, dispatching anyway");
+			return S_WAIT;
 		}
-	if(verify(pthread_mutex_unlock(dlock), "untry to sleep", dispatcher_cleanup, arg) < 0){return E_WAIT;};
+		LOG_ERROR("sem wait error");
+		dispatcher_cleanup(arg);
+		return E_WAIT;
+	}
 	return S_WAIT;
 }
 
